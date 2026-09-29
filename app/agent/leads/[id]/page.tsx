@@ -1,0 +1,1271 @@
+﻿"use client";
+
+import { useEffect, useState, use } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import {
+  ArrowLeft,
+  Save,
+  Trash2,
+  CheckCircle,
+  AlertCircle,
+  Hash,
+  Phone,
+  User,
+  MapPin,
+  Sparkles,
+  Activity,
+  HeartPulse,
+  FileText,
+  Clock,
+  Lock,
+} from "lucide-react";
+import AgentSidebar from "@/app/components/AgentSidebar";
+import LeadAuditHistory, { AuditLog } from "@/app/components/LeadAuditHistory";
+import {
+  LOCATIONS,
+  TREATMENTS,
+  LEAD_SOURCES,
+  SUB_DISPOSITIONS_MAP,
+  TELECONSULTATION_SLOTS,
+  formatDateToDDMMMYY,
+  parseDDMMMYYToISO,
+  getMonthFromDate,
+  notifyLeadUpdated,
+} from "@/lib/leadOptions";
+
+export default function AgentLeadDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const resolvedParams = use(params);
+  const leadId = resolvedParams.id;
+  const router = useRouter();
+
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
+  const [error, setError] = useState("");
+  const [toastMessage, setToastMessage] = useState("");
+  const [callerOptions, setCallerOptions] = useState<string[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+
+  // Original saved values to check if agent updated Notes or Sub Dispositions
+  const [initialSavedData, setInitialSavedData] = useState<{
+    notes: string;
+    subDispositions: string;
+  }>({
+    notes: "",
+    subDispositions: "",
+  });
+
+  const [formData, setFormData] = useState<any>({
+    uniqueId: "",
+    date: "",
+    month: "",
+    leadTimestamp: "",
+    createdAt: "",
+    mobileNumber: "",
+    alternateNumber: "",
+    callerName: "",
+    patientName: "",
+    patientAge: "",
+    spouseName: "",
+    spouseAge: "",
+    location: "",
+    otherCity: "",
+    lookingForTreatment: "",
+    preConditions: "",
+    surgeryDetails: "",
+    treatmentRequirements: "",
+    referredBy: "",
+    leadSource: "",
+    followUpDate: "",
+    subDispositions: "",
+    dispositions: "",
+    validStatus: "",
+    appointmentDate: "",
+    appointmentMonth: "",
+    teleconsultationSlot: "",
+    consultationCharges: "",
+    notes: "",
+    surgeryPaymentReceived: "",
+    surgeryCost: "",
+    surgeryDate: "",
+  });
+
+  // State for inline Other Location & Treatment
+  const [selectedLocationOption, setSelectedLocationOption] = useState<string>("");
+  const [otherLocationText, setOtherLocationText] = useState<string>("");
+  const [selectedTreatmentOption, setSelectedTreatmentOption] = useState<string>("");
+  const [otherTreatmentText, setOtherTreatmentText] = useState<string>("");
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        // 1. Check Auth
+        const meRes = await fetch("/api/auth/me");
+        if (!meRes.ok) {
+          if (meRes.status === 403) {
+            router.push("/agent/login?error=deactivated");
+          } else {
+            router.push("/agent/login");
+          }
+          return;
+        }
+        const meData = await meRes.json();
+        if (!meData.user || meData.user.role !== "agent") {
+          router.push("/agent/login");
+          return;
+        }
+        setUser(meData.user);
+
+        // Fetch caller names from members
+        try {
+          const membersRes = await fetch("/api/admin/members");
+          if (membersRes.ok) {
+            const mData = await membersRes.json();
+            const names = (mData.members || [])
+              .map((m: any) => m.name)
+              .filter(Boolean);
+            setCallerOptions(names);
+          }
+        } catch {
+          // ignore
+        }
+
+        // 2. Fetch Lead Details
+        const leadRes = await fetch(`/api/admin/leads/${leadId}`, {
+          cache: "no-store",
+        });
+        if (!leadRes.ok) {
+          throw new Error("Patient lead not found");
+        }
+        const data = await leadRes.json();
+        if (data.lead) {
+          const l = data.lead;
+          const locVal = l.location || "";
+          const otherLocVal = l.otherCity || "";
+          if (locVal && !LOCATIONS.includes(locVal as any)) {
+            setSelectedLocationOption("Other");
+            setOtherLocationText(locVal);
+          } else if (locVal === "Other") {
+            setSelectedLocationOption("Other");
+            setOtherLocationText(otherLocVal);
+          } else {
+            setSelectedLocationOption(locVal);
+            setOtherLocationText("");
+          }
+
+          const treatVal = l.lookingForTreatment || l.treatment || "";
+          if (treatVal && !TREATMENTS.includes(treatVal as any)) {
+            setSelectedTreatmentOption("Other");
+            setOtherTreatmentText(treatVal);
+          } else if (treatVal === "Other") {
+            setSelectedTreatmentOption("Other");
+            setOtherTreatmentText("");
+          } else {
+            setSelectedTreatmentOption(treatVal);
+            setOtherTreatmentText("");
+          }
+
+          setFormData({
+            uniqueId: l.uniqueId || "",
+            date: l.date || l.dateOfLead || "",
+            month: l.month || "",
+            leadTimestamp:
+              l.leadTimestamp ||
+              (l.createdAt
+                ? new Date(l.createdAt).toLocaleString("en-IN", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: true,
+                  })
+                : ""),
+            createdAt: l.createdAt || "",
+            mobileNumber: l.mobileNumber || l.phoneNumber || "",
+            alternateNumber: l.alternateNumber || "",
+            callerName: l.callerName || "",
+            patientName: l.patientName || "",
+            patientAge: l.patientAge || "",
+            spouseName: l.spouseName || "",
+            spouseAge: l.spouseAge || "",
+            location: locVal,
+            otherCity: otherLocVal,
+            lookingForTreatment: treatVal,
+            preConditions: l.preConditions || l.preCondition || "",
+            surgeryDetails: l.surgeryDetails || l.surgicalData || "",
+            treatmentRequirements:
+              l.treatmentRequirements || l.treatmentRequired || "",
+            referredBy: l.referredBy || "",
+            leadSource: l.leadSource || "",
+            followUpDate: l.followUpDate || l.followUpDates || "",
+            subDispositions: l.subDispositions || l.subDisposition || "",
+            dispositions: l.dispositions || l.disposition || "",
+            validStatus: l.validStatus || "",
+            appointmentDate: l.appointmentDate || "",
+            appointmentMonth: l.appointmentMonth || "",
+            teleconsultationSlot:
+              l.teleconsultationSlot || l.appointmentSlot || "",
+            consultationCharges:
+              l.consultationCharges || l.teleConsultationCharges || "",
+            notes: l.notes || "",
+            surgeryPaymentReceived:
+              l.surgeryPaymentReceived || l.surgeryReceipt || "",
+            surgeryCost: l.surgeryCost || "",
+            surgeryDate: l.surgeryDate || "",
+          });
+          setInitialSavedData({
+            notes: (l.notes || "").trim(),
+            subDispositions: (l.subDispositions || l.subDisposition || "").trim(),
+          });
+          setAuditLogs(l.auditLogs || []);
+        }
+      } catch (err: any) {
+        setError(err.message || "Failed to load lead details");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadData();
+  }, [leadId, router]);
+
+  // ── Background session watchdog ────────────────────────────────────────────
+  // Polls /api/auth/me every 30 seconds while agent is on this page.
+  // If admin/TL marks the account inactive, the next poll returns 403
+  // and the agent is immediately redirected to login with a "deactivated" message.
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (!res.ok) {
+          if (res.status === 403) {
+            router.push("/agent/login?error=deactivated");
+          } else {
+            router.push("/agent/login");
+          }
+        }
+      } catch {
+        // network error — do nothing, will retry next interval
+      }
+    };
+
+    const interval = setInterval(checkSession, 30000); // every 30 seconds
+    return () => clearInterval(interval);
+  }, [router]);
+
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/agent/login");
+  };
+
+  const handleChange = (
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >
+  ) => {
+    const { name, value } = e.target;
+    setFormData((prev: any) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handlePhoneChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    field: "mobileNumber" | "alternateNumber"
+  ) => {
+    const raw = e.target.value.replace(/\D/g, "").slice(0, 10);
+    setFormData((prev: any) => ({
+      ...prev,
+      [field]: raw,
+    }));
+  };
+
+  const handleAgeChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    field: "patientAge" | "spouseAge"
+  ) => {
+    const raw = e.target.value.replace(/\D/g, "").slice(0, 2);
+    setFormData((prev: any) => ({
+      ...prev,
+      [field]: raw,
+    }));
+  };
+
+  const handleDateChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    dateField: "date" | "followUpDate" | "appointmentDate" | "surgeryDate",
+    monthField?: "month" | "appointmentMonth"
+  ) => {
+    const isoVal = e.target.value;
+    if (!isoVal) {
+      setFormData((prev: any) => ({
+        ...prev,
+        [dateField]: "",
+        ...(monthField ? { [monthField]: "" } : {}),
+      }));
+      return;
+    }
+    const formatted = formatDateToDDMMMYY(isoVal);
+    const mmmYY = getMonthFromDate(isoVal);
+
+    setFormData((prev: any) => ({
+      ...prev,
+      [dateField]: formatted,
+      ...(monthField ? { [monthField]: mmmYY } : {}),
+    }));
+  };
+
+  // Location dropdown change handler
+  const handleLocationOptionChange = (
+    e: React.ChangeEvent<HTMLSelectElement>
+  ) => {
+    const val = e.target.value;
+    setSelectedLocationOption(val);
+    if (val === "Other") {
+      setFormData((prev: any) => ({
+        ...prev,
+        location: otherLocationText,
+        otherCity: otherLocationText,
+      }));
+    } else {
+      setOtherLocationText("");
+      setFormData((prev: any) => ({
+        ...prev,
+        location: val,
+        otherCity: "",
+      }));
+    }
+  };
+
+  const handleOtherLocationTextChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const text = e.target.value;
+    setOtherLocationText(text);
+    setFormData((prev: any) => ({
+      ...prev,
+      location: text,
+      otherCity: text,
+    }));
+  };
+
+  // Treatment dropdown change handler
+  const handleTreatmentOptionChange = (
+    e: React.ChangeEvent<HTMLSelectElement>
+  ) => {
+    const val = e.target.value;
+    setSelectedTreatmentOption(val);
+    if (val === "Other") {
+      setFormData((prev: any) => ({
+        ...prev,
+        lookingForTreatment: otherTreatmentText,
+      }));
+    } else {
+      setOtherTreatmentText("");
+      setFormData((prev: any) => ({
+        ...prev,
+        lookingForTreatment: val,
+      }));
+    }
+  };
+
+  const handleOtherTreatmentTextChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const text = e.target.value;
+    setOtherTreatmentText(text);
+    setFormData((prev: any) => ({
+      ...prev,
+      lookingForTreatment: text,
+    }));
+  };
+
+  const handleSubDispositionChange = (
+    e: React.ChangeEvent<HTMLSelectElement>
+  ) => {
+    const sub = e.target.value;
+    const mapping = SUB_DISPOSITIONS_MAP[sub] || {
+      disposition: "",
+      validStatus: "",
+    };
+
+    setFormData((prev: any) => ({
+      ...prev,
+      subDispositions: sub,
+      dispositions: mapping.disposition,
+      validStatus: mapping.validStatus,
+    }));
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    const currentNotes = (formData.notes || "").trim();
+    const currentSubDisp = (formData.subDispositions || "").trim();
+
+    // 1. Check Mandatory: Both Notes & Observations and Sub Dispositions must be filled
+    if (!currentSubDisp) {
+      setError("Sub Dispositions is mandatory. Please select a Sub Disposition before saving.");
+      return;
+    }
+
+    if (!currentNotes) {
+      setError("Notes & Observations is mandatory. Please enter patient call remarks before saving.");
+      return;
+    }
+
+    // 2. Check Update Requirement:
+    // "or agar phele se in domo me kuch bhi fill h to tab bhi use update karna hoga dono me se ek field ko agar nhi kiya update tab bhi sav changes na ho likha aaye not update any thing"
+    const hadInitialData = initialSavedData.notes !== "" || initialSavedData.subDispositions !== "";
+    const notesChanged = currentNotes !== initialSavedData.notes;
+    const subDispChanged = currentSubDisp !== initialSavedData.subDispositions;
+
+    if (hadInitialData && !notesChanged && !subDispChanged) {
+      setError("not update any thing");
+      return;
+    }
+
+    setSaving(true);
+
+    const finalLocation =
+      selectedLocationOption === "Other"
+        ? otherLocationText
+        : selectedLocationOption;
+    const finalTreatment =
+      selectedTreatmentOption === "Other"
+        ? otherTreatmentText
+        : selectedTreatmentOption;
+
+    try {
+      const res = await fetch(`/api/admin/leads/${leadId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...formData,
+          location: finalLocation,
+          otherCity: selectedLocationOption === "Other" ? otherLocationText : "",
+          lookingForTreatment: finalTreatment,
+          treatment: finalTreatment, // keep legacy field in sync
+          phoneNumber: formData.mobileNumber, // keep legacy field in sync
+          dateOfLead: formData.date,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to save lead changes");
+      }
+
+      if (data.lead?.auditLogs) {
+        setAuditLogs(data.lead.auditLogs);
+      }
+
+      // Update initialSavedData to the new saved values
+      setInitialSavedData({
+        notes: currentNotes,
+        subDispositions: currentSubDisp,
+      });
+
+      setToastMessage("Lead details updated successfully!");
+      notifyLeadUpdated();
+      setTimeout(() => setToastMessage(""), 4000);
+    } catch (err: any) {
+      setError(err.message || "Failed to update lead");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    setError("");
+
+    try {
+      const res = await fetch(`/api/admin/leads/${leadId}`, {
+        method: "DELETE",
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to delete lead");
+      }
+
+      notifyLeadUpdated();
+      router.push("/agent/leads");
+    } catch (err: any) {
+      setError(err.message || "Failed to delete lead");
+      setDeleting(false);
+      setIsConfirmDeleteOpen(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-[#cc2727]/30 border-t-[#cc2727] rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-black flex">
+      {/* Sidebar */}
+      <AgentSidebar user={user} onLogout={handleLogout} />
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Top Header */}
+        <header className="min-h-16 py-2 border-b border-slate-200 bg-white/80 backdrop-blur-md px-4 sm:px-6 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-30">
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href="/agent/leads"
+              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-black hover:text-black transition-colors flex items-center gap-1.5 text-xs font-semibold shrink-0"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Leads</span>
+            </Link>
+            <div className="h-5 w-px bg-slate-200 hidden sm:block" />
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono font-bold text-[#cc2727] bg-[#cc2727]/10 px-2.5 py-0.5 rounded-lg border border-[#cc2727]/20">
+                {formData.uniqueId || leadId}
+              </span>
+              <h1 className="text-sm sm:text-base font-bold text-black truncate max-w-[160px] sm:max-w-xs">
+                {formData.patientName || "Patient Details"}
+              </h1>
+            </div>
+
+            {/* Calling Reminder Alert Badge */}
+            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs">
+              <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span>
+                <strong>Call Reminder:</strong> Please update either <strong>Notes &amp; Observations</strong> or <strong>Sub Dispositions</strong> on each call, otherwise this call will not be added to your Total Calls.
+              </span>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="py-2 px-4 bg-[#cc2727] hover:bg-[#b02121] text-black text-xs font-semibold rounded-xl flex items-center gap-2 shadow-lg shadow-[#cc2727]/20 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+            >
+              {saving ? (
+                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <Save className="w-3.5 h-3.5" />
+              )}
+              <span>Save Changes</span>
+            </button>
+          </div>
+        </header>
+
+        {/* Form Body - Two-column responsive layout (Form Left, Audit History Right) */}
+        <main className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1600px] w-full mx-auto">
+          {/* Toast Message */}
+          {toastMessage && (
+            <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
+              <CheckCircle className="w-5 h-5 shrink-0" />
+              <span className="text-sm font-medium">{toastMessage}</span>
+            </div>
+          )}
+
+          {/* Error Message */}
+          {error && (
+            <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 shrink-0" />
+              <span className="text-sm font-medium">{error}</span>
+            </div>
+          )}
+
+          {/* Important Calling Update Reminder Banner */}
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-orange-500/15 border border-amber-500/30 text-amber-200 flex items-start sm:items-center gap-3.5 shadow-lg shadow-amber-950/20">
+            <div className="p-2 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 shrink-0 mt-0.5 sm:mt-0">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div className="space-y-0.5 text-xs sm:text-sm">
+              <p className="font-bold text-black flex items-center gap-2">
+                <span>Call Activity Requirement</span>
+                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  Mandatory
+                </span>
+              </p>
+              <p className="text-black leading-relaxed">
+                You must update either <strong className="text-amber-300 font-semibold">Notes &amp; Observations</strong> or <strong className="text-amber-300 font-semibold">Sub Dispositions</strong> on every call. If neither field is updated, this call will not be added to your Total Calls.
+              </p>
+            </div>
+          </div>
+
+          {/* Header Card with Patient Overview */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 rounded-2xl bg-[#cc2727]/20 text-[#cc2727] border border-indigo-500/30 flex items-center justify-center font-extrabold text-2xl uppercase shadow-lg shadow-indigo-500/10 shrink-0">
+                {formData.patientName ? formData.patientName.charAt(0) : "P"}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-bold text-black">
+                    {formData.patientName || "Unnamed Patient"}
+                  </h2>
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#cc2727]/10 text-[#cc2727] border border-[#cc2727]/20 font-mono font-bold">
+                    {formData.uniqueId}
+                  </span>
+                  {formData.validStatus && (
+                    <span
+                      className={`text-xs px-2.5 py-0.5 rounded-full border font-semibold ${
+                        formData.validStatus === "Valid"
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200/20"
+                          : "bg-rose-500/10 text-rose-300 border-rose-500/20"
+                      }`}
+                    >
+                      {formData.validStatus}
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-gray-500">
+                  <span className="flex items-center gap-1">
+                    <Phone className="w-3.5 h-3.5 text-gray-600" />
+                    {formData.mobileNumber || "No phone"}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5 text-gray-600" />
+                    {formData.location || formData.otherCity || "No location"}
+                  </span>
+                  <span className="flex items-center gap-1 font-mono text-[#cc2727]">
+                    <Clock className="w-3.5 h-3.5 text-[#cc2727]" />
+                    Added: {formData.leadTimestamp || formData.date || "N/A"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="text-right sm:self-center">
+              <span className="inline-block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                View & Edit Mode
+              </span>
+              <p className="text-xs text-gray-600">
+                Directly edit any field and click Save Changes.
+              </p>
+            </div>
+          </div>
+
+          {/* Two Column Grid: Left Side Form (8 cols), Right Side Change History (4 cols) */}
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+            {/* Left Column: Patient Edit Form */}
+            <div className="xl:col-span-8">
+              <form onSubmit={handleSave} className="space-y-6">
+            {/* Section 1: Lead Date, Contact & Caller (Read-Only for Agent) */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+              <div className="border-b border-slate-200 pb-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Hash className="w-4 h-4 text-[#cc2727]" />
+                  <h3 className="text-sm font-bold text-black uppercase tracking-wider">
+                    1. Lead Date, Contact & Caller
+                  </h3>
+                </div>
+                <span className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-lg">
+                  <Lock className="w-3 h-3 text-amber-400" />
+                  <span>View Only (Protected)</span>
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* Unique ID */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5 flex items-center justify-between">
+                    <span>Unique ID</span>
+                    <Lock className="w-3 h-3 text-gray-600" />
+                  </label>
+                  <input
+                    type="text"
+                    name="uniqueId"
+                    value={formData.uniqueId}
+                    readOnly
+                    disabled
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-black text-xs font-mono font-bold cursor-not-allowed select-text"
+                  />
+                </div>
+
+                {/* Date Field (DD-MMM-YY) */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5 flex items-center justify-between">
+                    <span>Date (DD-MMM-YY)</span>
+                    <Lock className="w-3 h-3 text-gray-600" />
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.date || "-"}
+                    readOnly
+                    disabled
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-black text-xs font-medium cursor-not-allowed select-text"
+                  />
+                </div>
+
+                {/* Time Stamp */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-[#cc2727]" />
+                    <span>Time Stamp (Lead Added)</span>
+                  </label>
+                  <div className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[#cc2727] text-xs font-mono font-medium flex items-center justify-between cursor-not-allowed select-text">
+                    <span>{formData.leadTimestamp || "Not recorded"}</span>
+                    {formData.leadTimestamp && (
+                      <span className="flex h-2 w-2 relative">
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-[#cc2727]"></span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Mobile Number (10 digits) */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5 flex items-center justify-between">
+                    <span>Mobile Number</span>
+                    <Lock className="w-3 h-3 text-gray-600" />
+                  </label>
+                  <input
+                    type="tel"
+                    value={formData.mobileNumber || "-"}
+                    readOnly
+                    disabled
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-black text-xs font-mono font-semibold cursor-not-allowed select-text"
+                  />
+                </div>
+
+                {/* Alternate # (10 digits) */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5 flex items-center justify-between">
+                    <span>Alternate #</span>
+                    <Lock className="w-3 h-3 text-gray-600" />
+                  </label>
+                  <input
+                    type="tel"
+                    value={formData.alternateNumber || "-"}
+                    readOnly
+                    disabled
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-black text-xs font-mono cursor-not-allowed select-text"
+                  />
+                </div>
+
+                {/* Caller Name */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5 flex items-center justify-between">
+                    <span>Caller Name</span>
+                    <Lock className="w-3 h-3 text-gray-600" />
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.callerName || "-"}
+                    readOnly
+                    disabled
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[#cc2727] text-xs font-semibold cursor-not-allowed select-text"
+                  />
+                </div>
+
+                {/* Lead Source */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5 flex items-center justify-between">
+                    <span>Lead Source</span>
+                    <Lock className="w-3 h-3 text-gray-600" />
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.leadSource || "-"}
+                    readOnly
+                    disabled
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-black text-xs cursor-not-allowed select-text"
+                  />
+                </div>
+
+                {/* Referred By */}
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-black mb-1.5 flex items-center justify-between">
+                    <span>Referred By</span>
+                    <Lock className="w-3 h-3 text-gray-600" />
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.referredBy || "-"}
+                    readOnly
+                    disabled
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-black text-xs cursor-not-allowed select-text"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Section 2: Patient & Family Profile */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+              <div className="border-b border-slate-200 pb-3 flex items-center gap-2">
+                <User className="w-4 h-4 text-[#cc2727]" />
+                <h3 className="text-sm font-bold text-black uppercase tracking-wider">
+                  2. Patient & Family Profile
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Patient Name (Read-Only for Agent) */}
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-black mb-1.5 flex items-center justify-between">
+                    <span>Patient Name</span>
+                    <span className="flex items-center gap-1 text-[11px] text-black font-normal">
+                      <Lock className="w-3 h-3 text-gray-600" />
+                      Protected
+                    </span>
+                  </label>
+                  <input
+                    type="text"
+                    name="patientName"
+                    value={formData.patientName || "-"}
+                    readOnly
+                    disabled
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-black text-xs font-semibold cursor-not-allowed select-text"
+                  />
+                </div>
+
+                {/* Patient Age (Number Field with 2 Digits) */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5">
+                    Patient Age (2 Digits)
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={2}
+                    name="patientAge"
+                    value={formData.patientAge}
+                    onChange={(e) => handleAgeChange(e, "patientAge")}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
+                  />
+                </div>
+
+                {/* Location (Drop Down with inline Other text field) */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5">
+                    Location
+                  </label>
+                  <select
+                    value={selectedLocationOption}
+                    onChange={handleLocationOptionChange}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
+                  >
+                    <option value="">Select Location</option>
+                    {LOCATIONS.map((loc) => (
+                      <option key={loc} value={loc}>
+                        {loc}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedLocationOption === "Other" && (
+                    <input
+                      type="text"
+                      value={otherLocationText}
+                      onChange={handleOtherLocationTextChange}
+                      placeholder="Enter other city / location..."
+                      className="w-full mt-2 px-3.5 py-2.5 bg-white border border-indigo-500/50 rounded-xl text-black text-xs placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#cc2727] animate-fadeIn"
+                      autoFocus
+                    />
+                  )}
+                </div>
+
+                {/* Spouse Name (Free text) */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5">
+                    Spouse Name (Free text)
+                  </label>
+                  <input
+                    type="text"
+                    name="spouseName"
+                    value={formData.spouseName}
+                    onChange={handleChange}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
+                  />
+                </div>
+
+                {/* Spouse Age (Number Field with 2 Digits) */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5">
+                    Spouse Age (2 Digits)
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={2}
+                    name="spouseAge"
+                    value={formData.spouseAge}
+                    onChange={(e) => handleAgeChange(e, "spouseAge")}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Section 3: Clinical & Surgical Details */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+              <div className="border-b border-slate-200 pb-3 flex items-center gap-2">
+                <HeartPulse className="w-4 h-4 text-[#cc2727]" />
+                <h3 className="text-sm font-bold text-black uppercase tracking-wider">
+                  3. Clinical & Surgical Information
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Looking for Treatment (Drop Down with inline Other text field) */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5">
+                    Looking for Treatment
+                  </label>
+                  <select
+                    value={selectedTreatmentOption}
+                    onChange={handleTreatmentOptionChange}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
+                  >
+                    <option value="">Select Treatment</option>
+                    {TREATMENTS.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedTreatmentOption === "Other" && (
+                    <input
+                      type="text"
+                      value={otherTreatmentText}
+                      onChange={handleOtherTreatmentTextChange}
+                      placeholder="Enter other treatment..."
+                      className="w-full mt-2 px-3.5 py-2.5 bg-white border border-indigo-500/50 rounded-xl text-black text-xs placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#cc2727] animate-fadeIn"
+                      autoFocus
+                    />
+                  )}
+                </div>
+
+                {/* Treatment Requirements (Free text) */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5">
+                    Treatment Requirements (Free text)
+                  </label>
+                  <input
+                    type="text"
+                    name="treatmentRequirements"
+                    value={formData.treatmentRequirements}
+                    onChange={handleChange}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
+                  />
+                </div>
+
+                {/* Pre Conditions (Free text) */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5">
+                    Pre Conditions (Free text)
+                  </label>
+                  <input
+                    type="text"
+                    name="preConditions"
+                    value={formData.preConditions}
+                    onChange={handleChange}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
+                  />
+                </div>
+
+                {/* Surgery Details (Free text) */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5">
+                    Surgery Details (Free text)
+                  </label>
+                  <input
+                    type="text"
+                    name="surgeryDetails"
+                    value={formData.surgeryDetails}
+                    onChange={handleChange}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Section 4: Follow Up, Disposition & Appointments */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+              <div className="border-b border-slate-200 pb-3 flex items-center gap-2">
+                <Activity className="w-4 h-4 text-[#cc2727]" />
+                <h3 className="text-sm font-bold text-black uppercase tracking-wider">
+                  4. Disposition, Appointments & Follow-up
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {/* Follow Up Date (Date Field DD-MMM-YY) */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5 flex items-center justify-between">
+                    <span>Follow Up Date (DD-MMM-YY)</span>
+                    {formData.followUpDate && (
+                      <span className="text-[11px] font-mono text-[#cc2727]">
+                        {formData.followUpDate}
+                      </span>
+                    )}
+                  </label>
+                  <input
+                    type="date"
+                    value={parseDDMMMYYToISO(formData.followUpDate)}
+                    onChange={(e) => handleDateChange(e, "followUpDate")}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727] [color-scheme:light]"
+                  />
+                </div>
+
+                {/* Sub Dispositions (Drop Down) */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5 flex items-center justify-between">
+                    <span>
+                      Sub Dispositions <strong className="text-rose-400">*</strong>
+                    </span>
+                    <span className="text-[10px] text-amber-400 font-normal">
+                      Mandatory to update
+                    </span>
+                  </label>
+                  <select
+                    name="subDispositions"
+                    required
+                    value={formData.subDispositions}
+                    onChange={handleSubDispositionChange}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
+                  >
+                    <option value="">Select Sub Disposition</option>
+                    {Object.keys(SUB_DISPOSITIONS_MAP).map((sub) => (
+                      <option key={sub} value={sub}>
+                        {sub}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Dispositions (Auto Selection) */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5">
+                    Dispositions (Auto Selection)
+                  </label>
+                  <input
+                    type="text"
+                    readOnly
+                    name="dispositions"
+                    value={formData.dispositions}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[#cc2727] font-semibold text-xs cursor-not-allowed"
+                  />
+                </div>
+
+                {/* Valid Status (Auto Selection) */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5">
+                    Valid Status (Auto Selection)
+                  </label>
+                  <input
+                    type="text"
+                    readOnly
+                    name="validStatus"
+                    value={formData.validStatus}
+                    className={`w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold cursor-not-allowed ${
+                      formData.validStatus === "Valid"
+                        ? "text-emerald-700"
+                        : formData.validStatus === "Invalid"
+                        ? "text-rose-400"
+                        : "text-gray-500"
+                    }`}
+                  />
+                </div>
+
+                {/* Appointment Date (Date Field DD-MMM-YY) */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5 flex items-center justify-between">
+                    <span>Appointment Date (DD-MMM-YY)</span>
+                    {formData.appointmentDate && (
+                      <span className="text-[11px] font-mono text-[#cc2727]">
+                        {formData.appointmentDate}
+                      </span>
+                    )}
+                  </label>
+                  <input
+                    type="date"
+                    value={parseDDMMMYYToISO(formData.appointmentDate)}
+                    onChange={(e) =>
+                      handleDateChange(
+                        e,
+                        "appointmentDate",
+                        "appointmentMonth"
+                      )
+                    }
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727] [color-scheme:light]"
+                  />
+                </div>
+
+                {/* Appointment month (Month MMM-YY) */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5">
+                    Appointment Month (MMM-YY)
+                  </label>
+                  <input
+                    type="text"
+                    name="appointmentMonth"
+                    value={formData.appointmentMonth}
+                    onChange={handleChange}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
+                  />
+                </div>
+
+                {/* Teleconsultation Slot (Drop Down) */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5">
+                    Teleconsultation Slot (Drop Down)
+                  </label>
+                  <select
+                    name="teleconsultationSlot"
+                    value={formData.teleconsultationSlot}
+                    onChange={handleChange}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
+                  >
+                    <option value="">Select Slot</option>
+                    {TELECONSULTATION_SLOTS.map((slot) => (
+                      <option key={slot} value={slot}>
+                        {slot}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Consultation Charges (Free text Amount Field) */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5">
+                    Consultation Charges (Amount Field)
+                  </label>
+                  <input
+                    type="text"
+                    name="consultationCharges"
+                    value={formData.consultationCharges}
+                    onChange={handleChange}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
+                  />
+                </div>
+
+                {/* Surgery Date (Date Field DD-MMM-YY) */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5 flex items-center justify-between">
+                    <span>Surgery Date (DD-MMM-YY)</span>
+                    {formData.surgeryDate && (
+                      <span className="text-[11px] font-mono text-[#cc2727]">
+                        {formData.surgeryDate}
+                      </span>
+                    )}
+                  </label>
+                  <input
+                    type="date"
+                    value={parseDDMMMYYToISO(formData.surgeryDate)}
+                    onChange={(e) => handleDateChange(e, "surgeryDate")}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727] [color-scheme:light]"
+                  />
+                </div>
+
+                {/* Surgery Cost (Free text Amount Field) */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5">
+                    Surgery Cost (Amount Field)
+                  </label>
+                  <input
+                    type="text"
+                    name="surgeryCost"
+                    value={formData.surgeryCost}
+                    onChange={handleChange}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
+                  />
+                </div>
+
+                {/* Surgery - Payment Received (Free text Amount Field) */}
+                <div>
+                  <label className="block text-xs font-semibold text-black mb-1.5">
+                    Surgery - Payment Received (Amount)
+                  </label>
+                  <input
+                    type="text"
+                    name="surgeryPaymentReceived"
+                    value={formData.surgeryPaymentReceived}
+                    onChange={handleChange}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Section 5: Notes */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+              <div className="border-b border-slate-200 pb-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-[#cc2727]" />
+                  <h3 className="text-sm font-bold text-black uppercase tracking-wider">
+                    5. Notes & Observations <strong className="text-rose-400">*</strong>
+                  </h3>
+                </div>
+                <span className="text-[11px] text-amber-400 font-medium">
+                  Mandatory to fill & update on each call
+                </span>
+              </div>
+              <div>
+                <textarea
+                  name="notes"
+                  required
+                  rows={4}
+                  value={formData.notes}
+                  onChange={handleChange}
+                  placeholder="Clinical notes, patient conversation remarks, payment details... (Mandatory)"
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727] resize-none"
+                />
+              </div>
+            </div>
+
+            {/* Bottom Save Bar */}
+            <div className="flex items-center justify-between p-4 bg-white/90 border border-slate-200 rounded-2xl sticky bottom-4 z-20 backdrop-blur-md shadow-sm">
+              <span className="text-xs text-gray-500">
+                All changes made above will be updated for Unique ID:{" "}
+                <strong className="text-black">{formData.uniqueId}</strong>
+              </span>
+              <div className="flex items-center gap-3">
+                <Link
+                  href="/agent/leads"
+                  className="py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-black text-xs font-semibold rounded-xl transition-colors"
+                >
+                  Cancel
+                </Link>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="py-2.5 px-5 bg-[#cc2727] hover:bg-[#b02121] text-black text-xs font-semibold rounded-xl flex items-center gap-2 shadow-lg shadow-[#cc2727]/20 transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {saving ? (
+                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <Save className="w-3.5 h-3.5" />
+                  )}
+                  <span>Save Changes</span>
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+
+        {/* Right Column: Lead Audit Change History */}
+        <div className="xl:col-span-4 sticky top-20">
+          <LeadAuditHistory
+            auditLogs={auditLogs}
+            leadCreatedAt={formData.createdAt || formData.leadTimestamp}
+            leadUniqueId={formData.uniqueId}
+          />
+        </div>
+      </div>
+    </main>
+      </div>
+    </div>
+  );
+}
