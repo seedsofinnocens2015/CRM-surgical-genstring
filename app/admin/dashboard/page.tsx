@@ -1711,7 +1711,7 @@ export default function AdminDashboard() {
                     <div className="flex items-center gap-2.5">
                       <div className="w-2 h-2 rounded-full bg-[#cc2727] animate-pulse" />
                       <h2 className="text-sm font-bold text-black tracking-wide">
-                        4. Appointment Date Summary
+                        4. Appointment Date Summary FTD
                       </h2>
                       <span className="text-xs text-gray-500 italic hidden sm:inline">
                         — Date-wise Appointment Count & Collections
@@ -1810,7 +1810,7 @@ export default function AdminDashboard() {
                     <div className="flex items-center gap-2.5">
                       <div className="w-2 h-2 rounded-full bg-[#cc2727] animate-pulse" />
                       <h2 className="text-sm font-bold text-black tracking-wide">
-                        5. Appointment month Summary
+                        5. Appointment month Summary MTD
                       </h2>
                       <span className="text-xs text-gray-500 italic hidden sm:inline">
                         — Month-wise Appointment Count & Collections
@@ -1868,7 +1868,7 @@ export default function AdminDashboard() {
                     <div className="flex items-center gap-2.5">
                       <div className="w-2 h-2 rounded-full bg-[#cc2727] animate-pulse" />
                       <h2 className="text-sm font-bold text-black tracking-wide">
-                        6. Surgery Date Summary
+                        6. Surgery Date Summary FTD
                       </h2>
                       <span className="text-xs text-gray-500 italic hidden sm:inline">
                         — Date-wise Surgery Count & Payment Received
@@ -1967,7 +1967,7 @@ export default function AdminDashboard() {
                     <div className="flex items-center gap-2.5">
                       <div className="w-2 h-2 rounded-full bg-[#cc2727] animate-pulse" />
                       <h2 className="text-sm font-bold text-black tracking-wide">
-                        7. Surgery month Summary
+                        7. Surgery month Summary MTD
                       </h2>
                       <span className="text-xs text-gray-500 italic hidden sm:inline">
                         — Month-wise Surgery Count & Payment Received

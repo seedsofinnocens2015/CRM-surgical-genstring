@@ -18,6 +18,7 @@ import {
   Calendar,
   Shield,
   UserCheck,
+  FileEdit,
 } from "lucide-react";
 
 interface TeamLeaderSidebarProps {
@@ -44,6 +45,11 @@ export default function TeamLeaderSidebar({ user, onLogout }: TeamLeaderSidebarP
       name: "All Members",
       href: "/team-leader/members",
       icon: Users,
+    },
+    {
+      name: "Edit Form",
+      href: "/team-leader/form-builder",
+      icon: FileEdit,
     },
   ];
 

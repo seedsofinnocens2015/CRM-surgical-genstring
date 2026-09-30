@@ -51,6 +51,8 @@ export interface ILead extends Document {
   // Assignment tracking
   assignedDate?: string; // DD-MMM-YY e.g. "28-Sep-26"
   assignedAt?: string; // ISO string
+  // Dynamic custom fields
+  customFields?: Record<string, any>;
   // Audit logs / change history
   auditLogs?: IAuditLog[];
   // Legacy aliases
@@ -267,12 +269,16 @@ const LeadSchema = new Schema<ILead>(
       ref: "User",
       default: null,
     },
+    customFields: {
+      type: Schema.Types.Mixed,
+      default: {},
+    },
     auditLogs: {
       type: [AuditLogSchema],
       default: [],
     },
   },
-  { timestamps: true }
+  { timestamps: true, strict: false }
 );
 
 if (process.env.NODE_ENV !== "production") {

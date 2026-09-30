@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useMemo } from "react";
 import {
@@ -26,6 +26,8 @@ import {
   getCurrentMonthMMMYY,
   getFormattedTimestamp,
 } from "@/lib/leadOptions";
+import { IFormField } from "@/models/FormConfig";
+import { DEFAULT_FORM_FIELDS } from "@/lib/defaultFormFields";
 
 interface AddLeadModalProps {
   isOpen: boolean;
@@ -33,6 +35,7 @@ interface AddLeadModalProps {
   onLeadAdded: (lead: any) => void;
   suggestedUniqueId?: string;
   existingLeads?: any[];
+  defaultCallerName?: string; // auto-fill for agent panel
 }
 
 export default function AddLeadModal({
@@ -41,11 +44,17 @@ export default function AddLeadModal({
   onLeadAdded,
   suggestedUniqueId,
   existingLeads,
+  defaultCallerName,
 }: AddLeadModalProps) {
   const [callerOptions, setCallerOptions] = useState<string[]>([]);
   const [leadsCache, setLeadsCache] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [formFields, setFormFields] = useState<IFormField[]>(DEFAULT_FORM_FIELDS);
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, any>>({});
+  const [subDispositionMappings, setSubDispositionMappings] = useState<
+    Record<string, { disposition: string; validStatus: string }>
+  >({ ...SUB_DISPOSITIONS_MAP });
 
   // States for Location 'Other' and Treatment 'Other'
   const [selectedLocationOption, setSelectedLocationOption] = useState("");
@@ -55,13 +64,13 @@ export default function AddLeadModal({
 
   const [leadTimestamp, setLeadTimestamp] = useState<string>(getFormattedTimestamp());
 
-  const getInitialFormData = (uid = suggestedUniqueId || "SC-1") => ({
+  const getInitialFormData = (uid = suggestedUniqueId || "SC-1", caller = defaultCallerName || "") => ({
     uniqueId: uid,
     date: getTodayDDMMMYY(),
     month: getCurrentMonthMMMYY(),
     mobileNumber: "",
     alternateNumber: "",
-    callerName: "",
+    callerName: caller,
     patientName: "",
     patientAge: "",
     spouseName: "",
@@ -112,10 +121,30 @@ export default function AddLeadModal({
       setOtherTreatmentText("");
 
       // Fresh clean reset of all fields without stale inputs
-      setFormData(getInitialFormData(suggestedUniqueId || "SC-1"));
+      setFormData(getInitialFormData(suggestedUniqueId || "SC-1", defaultCallerName || ""));
       setError("");
 
-      async function fetchCallersAndLeads() {
+      const fetchCallersAndLeads = async () => {
+        try {
+          const cfgRes = await fetch("/api/admin/form-config");
+          if (cfgRes.ok) {
+            const cfgData = await cfgRes.json();
+            if (cfgData.config?.fields && Array.isArray(cfgData.config.fields)) {
+              setFormFields(cfgData.config.fields);
+            }
+            if (cfgData.config?.subDispositionMappings && Object.keys(cfgData.config.subDispositionMappings).length > 0) {
+              setSubDispositionMappings(cfgData.config.subDispositionMappings);
+            } else {
+              const subDispField = (cfgData.config?.fields || []).find((f: any) => f.id === "subDispositions");
+              if (subDispField?.subDispositionMappings && Object.keys(subDispField.subDispositionMappings).length > 0) {
+                setSubDispositionMappings(subDispField.subDispositionMappings);
+              }
+            }
+          }
+        } catch {
+          // fallback to DEFAULT_FORM_FIELDS
+        }
+
         try {
           const res = await fetch("/api/admin/members");
           if (res.ok) {
@@ -124,6 +153,14 @@ export default function AddLeadModal({
               .map((m: any) => m.name)
               .filter(Boolean);
             setCallerOptions(names);
+            // Re-apply defaultCallerName after callerOptions are loaded
+            // so the <select> can match the value correctly
+            if (defaultCallerName) {
+              setFormData((prev) => ({
+                ...prev,
+                callerName: defaultCallerName,
+              }));
+            }
           }
         } catch {
           // fallback
@@ -142,10 +179,11 @@ export default function AddLeadModal({
             // fallback
           }
         }
-      }
+      };
       fetchCallersAndLeads();
     }
-  }, [isOpen, suggestedUniqueId, existingLeads]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, suggestedUniqueId, defaultCallerName]);
 
   // Real-time phone duplication matching
   // Matches any lead where either mobileNumber or alternateNumber contains/starts-with the entered digits
@@ -233,6 +271,93 @@ export default function AddLeadModal({
     }));
   };
 
+  const handleCustomFieldChange = (fieldId: string, value: any) => {
+    setCustomFieldValues((prev) => ({
+      ...prev,
+      [fieldId]: value,
+    }));
+  };
+
+  // Helper to render any dynamically added fields for a given section
+  const renderDynamicSectionFields = (sectionId: 1 | 2 | 3 | 4) => {
+    const customFieldsInSec = formFields.filter(
+      (f) => f.section === sectionId && !f.isSystem && f.enabled !== false
+    );
+    if (customFieldsInSec.length === 0) return null;
+
+    return (
+      <div className="pt-2 border-t border-slate-200/80 mt-3">
+        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block mb-2">
+          Custom Added Fields
+        </span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {customFieldsInSec.map((f) => (
+            <div key={f.id} className={f.type === "textarea" ? "sm:col-span-2" : ""}>
+              <label className="block text-xs font-bold text-black mb-1.5">
+                {f.label} {f.required && <span className="text-rose-600">*</span>}
+              </label>
+
+              {f.type === "select" ? (
+                <select
+                  required={f.required}
+                  value={customFieldValues[f.id] || ""}
+                  onChange={(e) => handleCustomFieldChange(f.id, e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727] font-medium"
+                >
+                  <option value="">Select {f.label}</option>
+                  {(f.options || []).map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              ) : f.type === "textarea" ? (
+                <textarea
+                  rows={2}
+                  required={f.required}
+                  placeholder={f.placeholder || `Enter ${f.label}`}
+                  value={customFieldValues[f.id] || ""}
+                  onChange={(e) => handleCustomFieldChange(f.id, e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#cc2727] font-medium"
+                />
+              ) : f.type === "checkbox" ? (
+                <div className="pt-2">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-black">
+                    <input
+                      type="checkbox"
+                      required={f.required}
+                      checked={Boolean(customFieldValues[f.id])}
+                      onChange={(e) => handleCustomFieldChange(f.id, e.target.checked)}
+                      className="w-4 h-4 rounded text-[#cc2727] focus:ring-[#cc2727]"
+                    />
+                    <span>{f.placeholder || f.label}</span>
+                  </label>
+                </div>
+              ) : f.type === "date" || f.type === "month" || f.type === "time" || f.type === "datetime-local" ? (
+                <input
+                  type={f.type}
+                  required={f.required}
+                  value={customFieldValues[f.id] || ""}
+                  onChange={(e) => handleCustomFieldChange(f.id, e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727] font-medium [color-scheme:light]"
+                />
+              ) : (
+                <input
+                  type={f.type}
+                  required={f.required}
+                  placeholder={f.placeholder || `Enter ${f.label}`}
+                  value={customFieldValues[f.id] || ""}
+                  onChange={(e) => handleCustomFieldChange(f.id, e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#cc2727] font-medium"
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   // Location dropdown change handler
   const handleLocationOptionChange = (
     e: React.ChangeEvent<HTMLSelectElement>
@@ -303,10 +428,12 @@ export default function AddLeadModal({
     e: React.ChangeEvent<HTMLSelectElement>
   ) => {
     const sub = e.target.value;
-    const mapping = SUB_DISPOSITIONS_MAP[sub] || {
-      disposition: "",
-      validStatus: "",
-    };
+    const mapping =
+      subDispositionMappings[sub] ||
+      SUB_DISPOSITIONS_MAP[sub] || {
+        disposition: "",
+        validStatus: "",
+      };
 
     setFormData((prev) => ({
       ...prev,
@@ -338,6 +465,7 @@ export default function AddLeadModal({
         location: finalLocation,
         otherCity: selectedLocationOption === "Other" ? finalLocation : "",
         lookingForTreatment: finalTreatment,
+        customFields: customFieldValues,
       };
 
       const res = await fetch("/api/admin/leads", {
@@ -640,7 +768,13 @@ export default function AddLeadModal({
                       {name}
                     </option>
                   ))}
-                  <option value="Self / Direct Call">Self / Direct Call</option>
+                  {(formFields.find((f) => f.id === "callerName")?.options || ["Self / Direct Call", "Front Desk"])
+                    .filter((opt) => !callerOptions.includes(opt))
+                    .map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
                 </select>
               </div>
 
@@ -656,7 +790,7 @@ export default function AddLeadModal({
                   className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727] focus:border-[#cc2727] font-medium"
                 >
                   <option value="">Select Lead Source</option>
-                  {LEAD_SOURCES.map((source) => (
+                  {(formFields.find((f) => f.id === "leadSource")?.options || LEAD_SOURCES).map((source) => (
                     <option key={source} value={source}>
                       {source}
                     </option>
@@ -679,6 +813,7 @@ export default function AddLeadModal({
                 />
               </div>
             </div>
+            {renderDynamicSectionFields(1)}
           </div>
 
           {/* Section 2: Patient & Spouse Profile */}
@@ -729,7 +864,7 @@ export default function AddLeadModal({
                   className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727] focus:border-[#cc2727] font-medium"
                 >
                   <option value="">Select Location</option>
-                  {LOCATIONS.map((loc) => (
+                  {(formFields.find((f) => f.id === "location")?.options || LOCATIONS).map((loc) => (
                     <option key={loc} value={loc}>
                       {loc}
                     </option>
@@ -777,6 +912,7 @@ export default function AddLeadModal({
                 />
               </div>
             </div>
+            {renderDynamicSectionFields(2)}
           </div>
 
           {/* Section 3: Clinical & Surgical Details */}
@@ -796,7 +932,7 @@ export default function AddLeadModal({
                   className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727] focus:border-[#cc2727] font-medium"
                 >
                   <option value="">Select Treatment</option>
-                  {TREATMENTS.map((t) => (
+                  {(formFields.find((f) => f.id === "lookingForTreatment")?.options || TREATMENTS).map((t) => (
                     <option key={t} value={t}>
                       {t}
                     </option>
@@ -859,6 +995,7 @@ export default function AddLeadModal({
                 />
               </div>
             </div>
+            {renderDynamicSectionFields(3)}
           </div>
 
           {/* Section 4: Follow Up, Disposition & Appointment */}
@@ -897,7 +1034,7 @@ export default function AddLeadModal({
                   className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727] focus:border-[#cc2727] font-medium"
                 >
                   <option value="">Select Sub Disposition</option>
-                  {Object.keys(SUB_DISPOSITIONS_MAP).map((sub) => (
+                  {(formFields.find((f) => f.id === "subDispositions")?.options || Object.keys(SUB_DISPOSITIONS_MAP)).map((sub) => (
                     <option key={sub} value={sub}>
                       {sub}
                     </option>
@@ -992,7 +1129,7 @@ export default function AddLeadModal({
                   className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727] focus:border-[#cc2727] font-medium"
                 >
                   <option value="">Select Teleconsultation Slot</option>
-                  {TELECONSULTATION_SLOTS.map((slot) => (
+                  {(formFields.find((f) => f.id === "teleconsultationSlot")?.options || TELECONSULTATION_SLOTS).map((slot) => (
                     <option key={slot} value={slot}>
                       {slot}
                     </option>
@@ -1063,6 +1200,7 @@ export default function AddLeadModal({
                 />
               </div>
             </div>
+            {renderDynamicSectionFields(4)}
           </div>
 
           {/* Section 5: Notes */}

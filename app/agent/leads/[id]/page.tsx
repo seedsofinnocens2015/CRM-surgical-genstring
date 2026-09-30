@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
@@ -33,6 +33,8 @@ import {
   getMonthFromDate,
   notifyLeadUpdated,
 } from "@/lib/leadOptions";
+import { IFormField } from "@/models/FormConfig";
+import { DEFAULT_FORM_FIELDS } from "@/lib/defaultFormFields";
 
 export default function AgentLeadDetailPage({
   params,
@@ -52,6 +54,11 @@ export default function AgentLeadDetailPage({
   const [toastMessage, setToastMessage] = useState("");
   const [callerOptions, setCallerOptions] = useState<string[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [formFields, setFormFields] = useState<IFormField[]>(DEFAULT_FORM_FIELDS);
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, any>>({});
+  const [subDispositionMappings, setSubDispositionMappings] = useState<
+    Record<string, { disposition: string; validStatus: string }>
+  >({ ...SUB_DISPOSITIONS_MAP });
 
   // Original saved values to check if agent updated Notes or Sub Dispositions
   const [initialSavedData, setInitialSavedData] = useState<{
@@ -122,6 +129,27 @@ export default function AgentLeadDetailPage({
           return;
         }
         setUser(meData.user);
+
+        // Fetch dynamic form configuration
+        try {
+          const cfgRes = await fetch("/api/admin/form-config");
+          if (cfgRes.ok) {
+            const cfgData = await cfgRes.json();
+            if (cfgData.config?.fields && Array.isArray(cfgData.config.fields)) {
+              setFormFields(cfgData.config.fields);
+            }
+            if (cfgData.config?.subDispositionMappings && Object.keys(cfgData.config.subDispositionMappings).length > 0) {
+              setSubDispositionMappings(cfgData.config.subDispositionMappings);
+            } else {
+              const subDispField = (cfgData.config?.fields || []).find((f: any) => f.id === "subDispositions");
+              if (subDispField?.subDispositionMappings && Object.keys(subDispField.subDispositionMappings).length > 0) {
+                setSubDispositionMappings(subDispField.subDispositionMappings);
+              }
+            }
+          }
+        } catch {
+          // ignore
+        }
 
         // Fetch caller names from members
         try {
@@ -221,6 +249,7 @@ export default function AgentLeadDetailPage({
             surgeryCost: l.surgeryCost || "",
             surgeryDate: l.surgeryDate || "",
           });
+          setCustomFieldValues(l.customFields || {});
           setInitialSavedData({
             notes: (l.notes || "").trim(),
             subDispositions: (l.subDispositions || l.subDisposition || "").trim(),
@@ -389,14 +418,102 @@ export default function AgentLeadDetailPage({
     }));
   };
 
+  const handleCustomFieldChange = (fieldId: string, value: any) => {
+    setCustomFieldValues((prev) => ({
+      ...prev,
+      [fieldId]: value,
+    }));
+  };
+
+  const renderDynamicSectionFields = (sectionId: 1 | 2 | 3 | 4) => {
+    const customFieldsInSec = formFields.filter(
+      (f) => f.section === sectionId && !f.isSystem && f.enabled !== false
+    );
+    if (customFieldsInSec.length === 0) return null;
+
+    return (
+      <div className="pt-3 border-t border-slate-200 mt-4">
+        <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-2">
+          Custom Added Fields
+        </span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {customFieldsInSec.map((f) => (
+            <div key={f.id} className={f.type === "textarea" ? "sm:col-span-2" : ""}>
+              <label className="block text-xs font-semibold text-black mb-1.5">
+                {f.label} {f.required && <span className="text-rose-600">*</span>}
+              </label>
+
+              {f.type === "select" ? (
+                <select
+                  required={f.required}
+                  value={customFieldValues[f.id] || ""}
+                  onChange={(e) => handleCustomFieldChange(f.id, e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
+                >
+                  <option value="">Select {f.label}</option>
+                  {(f.options || []).map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              ) : f.type === "textarea" ? (
+                <textarea
+                  rows={2}
+                  required={f.required}
+                  placeholder={f.placeholder || `Enter ${f.label}`}
+                  value={customFieldValues[f.id] || ""}
+                  onChange={(e) => handleCustomFieldChange(f.id, e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
+                />
+              ) : f.type === "checkbox" ? (
+                <div className="pt-2">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-black">
+                    <input
+                      type="checkbox"
+                      required={f.required}
+                      checked={Boolean(customFieldValues[f.id])}
+                      onChange={(e) => handleCustomFieldChange(f.id, e.target.checked)}
+                      className="w-4 h-4 rounded text-[#cc2727] focus:ring-[#cc2727]"
+                    />
+                    <span>{f.placeholder || f.label}</span>
+                  </label>
+                </div>
+              ) : f.type === "date" || f.type === "month" || f.type === "time" || f.type === "datetime-local" ? (
+                <input
+                  type={f.type}
+                  required={f.required}
+                  value={customFieldValues[f.id] || ""}
+                  onChange={(e) => handleCustomFieldChange(f.id, e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727] [color-scheme:light]"
+                />
+              ) : (
+                <input
+                  type={f.type}
+                  required={f.required}
+                  placeholder={f.placeholder || `Enter ${f.label}`}
+                  value={customFieldValues[f.id] || ""}
+                  onChange={(e) => handleCustomFieldChange(f.id, e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   const handleSubDispositionChange = (
     e: React.ChangeEvent<HTMLSelectElement>
   ) => {
     const sub = e.target.value;
-    const mapping = SUB_DISPOSITIONS_MAP[sub] || {
-      disposition: "",
-      validStatus: "",
-    };
+    const mapping =
+      subDispositionMappings[sub] ||
+      SUB_DISPOSITIONS_MAP[sub] || {
+        disposition: "",
+        validStatus: "",
+      };
 
     setFormData((prev: any) => ({
       ...prev,
@@ -458,6 +575,7 @@ export default function AgentLeadDetailPage({
           treatment: finalTreatment, // keep legacy field in sync
           phoneNumber: formData.mobileNumber, // keep legacy field in sync
           dateOfLead: formData.date,
+          customFields: customFieldValues,
         }),
       });
 
@@ -664,7 +782,7 @@ export default function AgentLeadDetailPage({
             {/* Left Column: Patient Edit Form */}
             <div className="xl:col-span-8">
               <form onSubmit={handleSave} className="space-y-6">
-            {/* Section 1: Lead Date, Contact & Caller (Read-Only for Agent) */}
+            {/* Section 1: Lead Date, Contact & Caller */}
             <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
               <div className="border-b border-slate-200 pb-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -673,10 +791,6 @@ export default function AgentLeadDetailPage({
                     1. Lead Date, Contact & Caller
                   </h3>
                 </div>
-                <span className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-lg">
-                  <Lock className="w-3 h-3 text-amber-400" />
-                  <span>View Only (Protected)</span>
-                </span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -744,64 +858,86 @@ export default function AgentLeadDetailPage({
 
                 {/* Alternate # (10 digits) */}
                 <div>
-                  <label className="block text-xs font-semibold text-black mb-1.5 flex items-center justify-between">
-                    <span>Alternate #</span>
-                    <Lock className="w-3 h-3 text-gray-600" />
+                  <label className="block text-xs font-semibold text-black mb-1.5">
+                    Alternate #
                   </label>
                   <input
                     type="tel"
-                    value={formData.alternateNumber || "-"}
-                    readOnly
-                    disabled
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-black text-xs font-mono cursor-not-allowed select-text"
+                    maxLength={10}
+                    name="alternateNumber"
+                    value={formData.alternateNumber || ""}
+                    onChange={(e) => handlePhoneChange(e, "alternateNumber")}
+                    placeholder="10 digit mobile"
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
                   />
                 </div>
 
                 {/* Caller Name */}
                 <div>
-                  <label className="block text-xs font-semibold text-black mb-1.5 flex items-center justify-between">
-                    <span>Caller Name</span>
-                    <Lock className="w-3 h-3 text-gray-600" />
+                  <label className="block text-xs font-semibold text-black mb-1.5">
+                    Caller Name
                   </label>
-                  <input
-                    type="text"
-                    value={formData.callerName || "-"}
-                    readOnly
-                    disabled
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[#cc2727] text-xs font-semibold cursor-not-allowed select-text"
-                  />
+                  <select
+                    name="callerName"
+                    value={formData.callerName}
+                    onChange={handleChange}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
+                  >
+                    <option value="">Select Caller Name</option>
+                    {callerOptions.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                    {(formFields.find((f) => f.id === "callerName")?.options || [
+                      "Self / Direct Call",
+                      "Front Desk",
+                    ])
+                      .filter((opt) => !callerOptions.includes(opt))
+                      .map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                  </select>
                 </div>
 
                 {/* Lead Source */}
                 <div>
-                  <label className="block text-xs font-semibold text-black mb-1.5 flex items-center justify-between">
-                    <span>Lead Source</span>
-                    <Lock className="w-3 h-3 text-gray-600" />
+                  <label className="block text-xs font-semibold text-black mb-1.5">
+                    Lead Source
                   </label>
-                  <input
-                    type="text"
-                    value={formData.leadSource || "-"}
-                    readOnly
-                    disabled
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-black text-xs cursor-not-allowed select-text"
-                  />
+                  <select
+                    name="leadSource"
+                    value={formData.leadSource}
+                    onChange={handleChange}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
+                  >
+                    <option value="">Select Lead Source</option>
+                    {(formFields.find((f) => f.id === "leadSource")?.options || LEAD_SOURCES).map((source) => (
+                      <option key={source} value={source}>
+                        {source}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Referred By */}
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-black mb-1.5 flex items-center justify-between">
-                    <span>Referred By</span>
-                    <Lock className="w-3 h-3 text-gray-600" />
+                  <label className="block text-xs font-semibold text-black mb-1.5">
+                    Referred By
                   </label>
                   <input
                     type="text"
-                    value={formData.referredBy || "-"}
-                    readOnly
-                    disabled
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-black text-xs cursor-not-allowed select-text"
+                    name="referredBy"
+                    value={formData.referredBy || ""}
+                    onChange={handleChange}
+                    placeholder="Doctor / Hospital / Portal name"
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
                   />
                 </div>
               </div>
+              {renderDynamicSectionFields(1)}
             </div>
 
             {/* Section 2: Patient & Family Profile */}
@@ -814,22 +950,18 @@ export default function AgentLeadDetailPage({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Patient Name (Read-Only for Agent) */}
+                {/* Patient Name */}
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-black mb-1.5 flex items-center justify-between">
-                    <span>Patient Name</span>
-                    <span className="flex items-center gap-1 text-[11px] text-black font-normal">
-                      <Lock className="w-3 h-3 text-gray-600" />
-                      Protected
-                    </span>
+                  <label className="block text-xs font-semibold text-black mb-1.5">
+                    Patient Name (Free text)
                   </label>
                   <input
                     type="text"
                     name="patientName"
-                    value={formData.patientName || "-"}
-                    readOnly
-                    disabled
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-black text-xs font-semibold cursor-not-allowed select-text"
+                    value={formData.patientName || ""}
+                    onChange={handleChange}
+                    placeholder="Full name of patient"
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
                   />
                 </div>
 
@@ -859,7 +991,7 @@ export default function AgentLeadDetailPage({
                     className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
                   >
                     <option value="">Select Location</option>
-                    {LOCATIONS.map((loc) => (
+                    {(formFields.find((f) => f.id === "location")?.options || LOCATIONS).map((loc) => (
                       <option key={loc} value={loc}>
                         {loc}
                       </option>
@@ -906,6 +1038,7 @@ export default function AgentLeadDetailPage({
                   />
                 </div>
               </div>
+              {renderDynamicSectionFields(2)}
             </div>
 
             {/* Section 3: Clinical & Surgical Details */}
@@ -929,7 +1062,7 @@ export default function AgentLeadDetailPage({
                     className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
                   >
                     <option value="">Select Treatment</option>
-                    {TREATMENTS.map((t) => (
+                    {(formFields.find(f => f.id === "lookingForTreatment")?.options || TREATMENTS).map((t) => (
                       <option key={t} value={t}>
                         {t}
                       </option>
@@ -989,6 +1122,7 @@ export default function AgentLeadDetailPage({
                   />
                 </div>
               </div>
+              {renderDynamicSectionFields(3)}
             </div>
 
             {/* Section 4: Follow Up, Disposition & Appointments */}
@@ -1037,7 +1171,7 @@ export default function AgentLeadDetailPage({
                     className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
                   >
                     <option value="">Select Sub Disposition</option>
-                    {Object.keys(SUB_DISPOSITIONS_MAP).map((sub) => (
+                    {((formFields.find(f => f.id === "subDispositions")?.options) || Object.keys(SUB_DISPOSITIONS_MAP)).map((sub) => (
                       <option key={sub} value={sub}>
                         {sub}
                       </option>
@@ -1129,7 +1263,7 @@ export default function AgentLeadDetailPage({
                     className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-black text-xs focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
                   >
                     <option value="">Select Slot</option>
-                    {TELECONSULTATION_SLOTS.map((slot) => (
+                    {((formFields.find(f => f.id === "teleconsultationSlot")?.options) || TELECONSULTATION_SLOTS).map((slot) => (
                       <option key={slot} value={slot}>
                         {slot}
                       </option>
@@ -1197,6 +1331,7 @@ export default function AgentLeadDetailPage({
                   />
                 </div>
               </div>
+              {renderDynamicSectionFields(4)}
             </div>
 
             {/* Section 5: Notes */}

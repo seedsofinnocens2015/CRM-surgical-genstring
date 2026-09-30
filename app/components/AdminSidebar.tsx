@@ -18,6 +18,7 @@ import {
   Calendar,
   Shield,
   UserCheck,
+  FileEdit,
 } from "lucide-react";
 
 interface AdminSidebarProps {
@@ -44,6 +45,11 @@ export default function AdminSidebar({ user, onLogout }: AdminSidebarProps) {
       name: "All Members",
       href: "/admin/members",
       icon: Users,
+    },
+    {
+      name: "Edit Form",
+      href: "/admin/form-builder",
+      icon: FileEdit,
     },
   ];
 

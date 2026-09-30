@@ -26,15 +26,26 @@ export const TREATMENTS = [
 ];
 
 export const LEAD_SOURCES = [
-  "Google Search Ads",
-  "Facebook Ads",
-  "Instagram Ads",
-  "Website Enquiry",
+  "Google Ads",
+  "Meta Ads",
+  "Website",
   "WhatsApp",
   "WhatsApp Call",
-  "Inbound Call",
   "Phone Call",
   "Doctor Referral"
+];
+
+export const DISPOSITIONS = [
+  "Converted",
+  "Contacted",
+  "Contact Attempt",
+  "Closed",
+];
+
+export const VALID_STATUS_LIST = [
+  "Valid",
+  "Invalid",
+  "NA",
 ];
 
 export const SUB_DISPOSITIONS_MAP: Record<

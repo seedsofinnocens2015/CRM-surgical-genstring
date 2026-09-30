@@ -182,6 +182,7 @@ export async function POST(req: Request) {
       surgeryPaymentReceived: (surgeryPaymentReceived || surgeryReceipt || "").trim(),
       surgeryCost: (surgeryCost || "").trim(),
       surgeryDate: (surgeryDate || "").trim(),
+      customFields: body.customFields || {},
       // Stamp assignment date if a caller is set at creation time
       ...(callerName && callerName.trim()
         ? {

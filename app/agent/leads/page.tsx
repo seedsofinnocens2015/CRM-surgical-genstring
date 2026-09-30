@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
@@ -1256,7 +1256,7 @@ export default function AgentLeadsPage() {
                     <tr>
                       {/* 1. Unique ID */}
                       <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 left-0 bg-white z-30 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
-                        Unique ID
+                        Lead ID
                       </th>
 
                       {/* Patient & Family Profile at Front */}
@@ -1698,6 +1698,7 @@ export default function AgentLeadsPage() {
         onLeadAdded={handleLeadAdded}
         suggestedUniqueId={nextUniqueId}
         existingLeads={leads}
+        defaultCallerName={user?.name || ""}
       />
     </div>
   );
