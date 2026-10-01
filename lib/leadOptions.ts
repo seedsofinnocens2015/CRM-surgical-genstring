@@ -251,21 +251,84 @@ export function parseDDMMMYYToISO(formattedDate: string): string {
   return `${year}-${monthStr}-${day}`;
 }
 
-// Extracts Month (MMM-YY) from date string
+/**
+ * Universal date normaliser → always returns DD-MMM-YY string.
+ * Handles:
+ *   - Excel serial number  e.g. 46245
+ *   - DD-MMM-YY            e.g. 28-Sep-26
+ *   - DD-MMM-YYYY          e.g. 28-Sep-2026
+ *   - DD-MM-YYYY           e.g. 15-09-2026
+ *   - YYYY-MM-DD           e.g. 2026-09-15
+ *   - ISO timestamp        e.g. 2026-09-15T10:30:00+05:30
+ */
+export function parseAnyDateToDDMMMYY(raw: any): string {
+  if (!raw && raw !== 0) return "";
+  const str = String(raw).trim();
+  if (!str) return "";
+
+  // 1. Excel serial number (pure integer, typically > 25000)
+  const asNum = Number(str);
+  if (!isNaN(asNum) && asNum > 25000 && asNum < 60000 && !str.includes("-") && !str.includes("/")) {
+    const d = new Date((asNum - (25567 + 2)) * 86400 * 1000);
+    if (!isNaN(d.getTime())) {
+      const yr = String(d.getFullYear()).slice(-2);
+      const dy = String(d.getDate()).padStart(2, "0");
+      const mmm = MONTH_NAMES[d.getMonth()];
+      return `${dy}-${mmm}-${yr}`;
+    }
+  }
+
+  // 2. DD-MMM-YY or DD-MMM-YYYY  (e.g. 28-Sep-26 or 28-Sep-2026)
+  const ddMMMYY = /^(\d{1,2})-([A-Za-z]{3})-(\d{2,4})$/.exec(str);
+  if (ddMMMYY) {
+    const day = ddMMMYY[1].padStart(2, "0");
+    const mmm = ddMMMYY[2].charAt(0).toUpperCase() + ddMMMYY[2].slice(1).toLowerCase();
+    const yr = ddMMMYY[3].length === 4 ? ddMMMYY[3].slice(-2) : ddMMMYY[3];
+    return `${day}-${mmm}-${yr}`;
+  }
+
+  // 3. DD-MM-YYYY or DD/MM/YYYY  (e.g. 15-09-2026 or 15/09/2026)
+  const ddMMYYYY = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/.exec(str);
+  if (ddMMYYYY) {
+    const day = ddMMYYYY[1].padStart(2, "0");
+    const monthIdx = parseInt(ddMMYYYY[2], 10) - 1;
+    const yr = ddMMYYYY[3].slice(-2);
+    const mmm = MONTH_NAMES[monthIdx] || ddMMYYYY[2];
+    return `${day}-${mmm}-${yr}`;
+  }
+
+  // 4. YYYY-MM-DD  (e.g. 2026-09-15)
+  const yyyyMMDD = /^(\d{4})-(\d{2})-(\d{2})/.exec(str);
+  if (yyyyMMDD) {
+    const yr = yyyyMMDD[1].slice(-2);
+    const monthIdx = parseInt(yyyyMMDD[2], 10) - 1;
+    const day = yyyyMMDD[3];
+    const mmm = MONTH_NAMES[monthIdx] || yyyyMMDD[2];
+    return `${day}-${mmm}-${yr}`;
+  }
+
+  // 5. Try JS Date parse for ISO / other formats
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) {
+    const yr = String(d.getFullYear()).slice(-2);
+    const dy = String(d.getDate()).padStart(2, "0");
+    const mmm = MONTH_NAMES[d.getMonth()];
+    return `${dy}-${mmm}-${yr}`;
+  }
+
+  // Fallback: return as-is
+  return str;
+}
+
+// Extracts Month (MMM-YY) from any supported date string
 export function getMonthFromDate(dateStr: string): string {
   if (!dateStr) return "";
-  if (dateStr.includes("-")) {
-    const parts = dateStr.split("-");
-    if (parts[0].length === 4) {
-      // YYYY-MM-DD
-      const monthIdx = parseInt(parts[1], 10) - 1;
-      const mmm = MONTH_NAMES[monthIdx] || parts[1];
-      const year = parts[0].slice(-2);
-      return `${mmm}-${year}`;
-    } else if (parts.length === 3) {
-      // DD-MMM-YY
-      return `${parts[1]}-${parts[2]}`;
-    }
+  const normalized = parseAnyDateToDDMMMYY(dateStr);
+  if (!normalized) return "";
+  // normalized is now always DD-MMM-YY
+  const parts = normalized.split("-");
+  if (parts.length === 3 && MONTH_NAMES.includes(parts[1])) {
+    return `${parts[1]}-${parts[2]}`;
   }
   return "";
 }

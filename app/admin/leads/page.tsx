@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
@@ -414,15 +414,14 @@ export default function AdminLeadsPage() {
   // Upload / Import Modal State
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
-  const handleLeadsImported = (importedLeads: any[], newNextId: string) => {
-    if (importedLeads.length > 0) {
-      setLeads((prev) => [...importedLeads, ...prev]);
-      notifyLeadUpdated();
-    }
+  const handleLeadsImported = (importedLeads: any[], newNextId: string, deletedCount?: number) => {
+    fetchSessionAndLeads();
+    notifyLeadUpdated();
     if (newNextId) {
       setNextUniqueId(newNextId);
     }
-    setToastMessage(`Successfully imported ${importedLeads.length} patient leads!`);
+    const replaceMsg = deletedCount && deletedCount > 0 ? ` (${deletedCount} existing duplicate leads replaced)` : "";
+    setToastMessage(`Successfully imported ${importedLeads.length} patient leads${replaceMsg}!`);
     setTimeout(() => setToastMessage(""), 5000);
   };
 

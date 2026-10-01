@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useRef } from "react";
 import {
@@ -13,11 +13,12 @@ import {
   Users,
 } from "lucide-react";
 import * as XLSX from "xlsx";
+import { getMonthFromDate } from "@/lib/leadOptions";
 
 interface UploadLeadsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onLeadsImported: (leads: any[], nextId: string) => void;
+  onLeadsImported: (leads: any[], nextId: string, deletedCount?: number) => void;
 }
 
 // Clean and normalize keys for fuzzy matching
@@ -29,6 +30,73 @@ const MONTH_NAMES = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
 ];
+
+/**
+ * Normalises any date value to DD-MMM-YY string.
+ * Handles: Excel serial int, DD-MMM-YY, DD-MMM-YYYY, DD-MM-YYYY, DD/MM/YYYY, YYYY-MM-DD, ISO timestamp.
+ */
+function parseAnyDate(raw: any): string {
+  if (!raw && raw !== 0) return "";
+  const str = String(raw).trim();
+  if (!str) return "";
+
+  // Excel serial number (pure integer, 25000-60000 range = years 1968–2064)
+  const asNum = Number(str);
+  if (!isNaN(asNum) && asNum > 25000 && asNum < 60000 && !str.includes("-") && !str.includes("/")) {
+    const d = new Date((asNum - (25567 + 2)) * 86400 * 1000);
+    if (!isNaN(d.getTime())) {
+      const yr = String(d.getFullYear()).slice(-2);
+      const dy = String(d.getDate()).padStart(2, "0");
+      return `${dy}-${MONTH_NAMES[d.getMonth()]}-${yr}`;
+    }
+  }
+
+  // DD-MMM-YY or DD-MMM-YYYY (e.g. 28-Sep-26, 28-Sep-2026)
+  const m1 = /^(\d{1,2})-([A-Za-z]{3})-(\d{2,4})$/.exec(str);
+  if (m1) {
+    const day = m1[1].padStart(2, "0");
+    const mmm = m1[2].charAt(0).toUpperCase() + m1[2].slice(1).toLowerCase();
+    const yr = m1[3].length === 4 ? m1[3].slice(-2) : m1[3];
+    return `${day}-${mmm}-${yr}`;
+  }
+
+  // DD-MM-YYYY or DD/MM/YYYY (e.g. 15-09-2026)
+  const m2 = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/.exec(str);
+  if (m2) {
+    const day = m2[1].padStart(2, "0");
+    const monthIdx = parseInt(m2[2], 10) - 1;
+    const yr = m2[3].slice(-2);
+    return `${day}-${MONTH_NAMES[monthIdx] || m2[2]}-${yr}`;
+  }
+
+  // YYYY-MM-DD (e.g. 2026-09-15)
+  const m3 = /^(\d{4})-(\d{2})-(\d{2})/.exec(str);
+  if (m3) {
+    const monthIdx = parseInt(m3[2], 10) - 1;
+    const yr = m3[1].slice(-2);
+    return `${m3[3]}-${MONTH_NAMES[monthIdx] || m3[2]}-${yr}`;
+  }
+
+  // ISO / any other JS-parseable date
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) {
+    const yr = String(d.getFullYear()).slice(-2);
+    const dy = String(d.getDate()).padStart(2, "0");
+    return `${dy}-${MONTH_NAMES[d.getMonth()]}-${yr}`;
+  }
+
+  return str; // fallback: keep as-is
+}
+
+/** Derives MMM-YY from a DD-MMM-YY string */
+function monthFromDDMMMYY(ddMMMYY: string): string {
+  if (!ddMMMYY) return "";
+  const parts = ddMMMYY.split("-");
+  if (parts.length === 3 && MONTH_NAMES.includes(parts[1])) {
+    return `${parts[1]}-${parts[2]}`;
+  }
+  return "";
+}
 
 // Parses any raw date/timestamp (ISO e.g. "2026-08-11T22:28:43+05:30", Excel serial, or string)
 function parseExcelTimestamp(raw: any): { date: string; month: string; timestamp: string } {
@@ -147,18 +215,51 @@ export default function UploadLeadsModal({
           return "";
         };
 
-        const rawTimestampOrDate =
-          row["Timestamp"] ||
-          row["Date"] ||
-          row["leadTimestamp"] ||
-          row["Created Time"] ||
-          row["created_time"] ||
-          row["date"] ||
-          row["Date of Lead"] ||
-          "";
+        // getRawVal: returns the raw value (number/string/Date) — needed for date fields
+        // so Excel serial numbers are NOT coerced to string prematurely
+        const getRawVal = (...possibleKeys: string[]): any => {
+          for (const k of possibleKeys) {
+            const ck = cleanKey(k);
+            if (cleanedRow[ck] !== undefined && cleanedRow[ck] !== "") {
+              return cleanedRow[ck];
+            }
+          }
+          return "";
+        };
 
-        const { date: parsedDate, month: parsedMonth, timestamp: parsedTimestamp } =
-          parseExcelTimestamp(rawTimestampOrDate);
+        // 1. Extract Date from sheet (priority to Date / Date of Lead)
+        const rawDateVal = getRawVal(
+          "Date",
+          "Date (DD-MMM-YY)",
+          "date",
+          "Date of Lead",
+          "leadDate",
+          "Created Time",
+          "created_time",
+          "Timestamp",
+          "leadTimestamp"
+        );
+
+        const parsedDate = parseAnyDate(rawDateVal);
+        const parsedMonth = monthFromDDMMMYY(parsedDate) || (parsedDate ? getMonthFromDate(parsedDate) : "");
+
+        // 2. Time Stamp: if Excel already has a formatted timestamp with time, keep it, otherwise format with current upload time
+        const rawTimestampVal = getRawVal("Time Stamp", "leadTimestamp", "Timestamp");
+        let parsedTimestamp = "";
+        if (rawTimestampVal && String(rawTimestampVal).includes(":") && (String(rawTimestampVal).includes("AM") || String(rawTimestampVal).includes("PM"))) {
+          parsedTimestamp = String(rawTimestampVal).trim();
+        } else {
+          // Keep the exact lead date, with current upload time
+          const now = new Date();
+          let hrs = now.getHours();
+          const mins = String(now.getMinutes()).padStart(2, "0");
+          const ampm = hrs >= 12 ? "PM" : "AM";
+          hrs = hrs % 12;
+          hrs = hrs ? hrs : 12;
+          const strHours = String(hrs).padStart(2, "0");
+          const effectiveDate = parsedDate || `${String(now.getDate()).padStart(2, "0")}-${MONTH_NAMES[now.getMonth()]}-${String(now.getFullYear()).slice(-2)}`;
+          parsedTimestamp = `${effectiveDate}, ${strHours}:${mins} ${ampm}`;
+        }
 
         const rawPhone = getVal(
           "Mobile Number",
@@ -217,11 +318,11 @@ export default function UploadLeadsModal({
           "surgeryDetails",
           "Surgical Data"
         );
-        const followUp = getVal(
+        const followUp = parseAnyDate(getRawVal(
           "Follow Up Date",
           "followUpDate",
           "Next Follow Up"
-        );
+        ));
         const subDisp = getVal(
           "Sub Dispositions",
           "subDispositions",
@@ -229,11 +330,13 @@ export default function UploadLeadsModal({
         );
         const disp = getVal("Dispositions", "dispositions", "Disposition");
         const validStat = getVal("Valid Status", "validStatus", "Validity");
-        const apptDate = getVal(
+        const apptDate = parseAnyDate(getRawVal(
           "Appointment Date",
           "appointmentDate",
           "Consultation Date"
-        );
+        ));
+        const apptMonth = monthFromDDMMMYY(apptDate) ||
+          getVal("Appointment Month", "appointmentMonth");
         const apptSlot = getVal(
           "Teleconsultation Slot",
           "teleconsultationSlot",
@@ -251,7 +354,7 @@ export default function UploadLeadsModal({
           "Observation",
           "Observations"
         );
-        const surgDate = getVal("Surgery Date", "surgeryDate");
+        const surgDate = parseAnyDate(getRawVal("Surgery Date", "surgeryDate"));
         const surgCost = getVal("Surgery Cost", "surgeryCost");
         const surgPay = getVal(
           "Surgery Payment Received",
@@ -282,6 +385,7 @@ export default function UploadLeadsModal({
           dispositions: disp,
           validStatus: validStat,
           appointmentDate: apptDate,
+          appointmentMonth: apptMonth,
           teleconsultationSlot: apptSlot,
           consultationCharges: consultFee,
           notes: notes,
@@ -367,7 +471,7 @@ export default function UploadLeadsModal({
         throw new Error(data.error || "Failed to import leads");
       }
 
-      onLeadsImported(data.leads || [], data.nextUniqueId || "");
+      onLeadsImported(data.leads || [], data.nextUniqueId || "", data.deletedCount || 0);
       handleClose();
     } catch (err: any) {
       setError(err.message || "Failed to import leads");
@@ -386,7 +490,7 @@ export default function UploadLeadsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-2xl bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] text-black">
+      <div className={`relative w-full ${file ? "max-w-7xl" : "max-w-2xl"} bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[92vh] text-black transition-all`}>
         {/* Header */}
         <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
           <div className="flex items-center gap-3">
@@ -507,59 +611,153 @@ export default function UploadLeadsModal({
                 </button>
               </div>
 
-              {/* Preview Table */}
-              <div>
-                <div className="text-xs font-bold text-black mb-2 flex items-center justify-between">
-                  <span>Preview First 5 Leads:</span>
+              {/* Preview Table with all 28 columns and all rows */}
+              <div className="space-y-2">
+                <div className="text-xs font-bold text-black flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span>Preview All Detected Leads ({parsedLeads.length} Total):</span>
+                    <span className="text-[11px] font-normal text-gray-500">
+                      (Showing all 28 fields)
+                    </span>
+                  </div>
                   <span className="text-[11px] text-[#cc2727] font-semibold">
-                    Unique IDs will be auto-generated upon saving
+                    Consecutive SC- Unique IDs will be auto-generated
                   </span>
                 </div>
-                <div className="border border-slate-200 rounded-xl overflow-x-auto max-h-48 bg-white">
-                  <table className="w-full text-left text-xs text-black whitespace-nowrap">
-                    <thead className="bg-slate-50 text-black text-[11px] uppercase tracking-wider border-b border-slate-200 font-bold">
+                <div className="border border-slate-300 rounded-xl overflow-x-auto max-h-[55vh] overflow-y-auto bg-white shadow-inner">
+                  <table className="w-full text-left text-xs text-black whitespace-nowrap border-collapse">
+                    <thead className="bg-slate-100 text-black text-[11px] uppercase tracking-wider border-b border-slate-300 font-bold sticky top-0 z-10 shadow-sm">
                       <tr>
-                        <th className="px-3 py-2">#</th>
-                        <th className="px-3 py-2">Patient Name</th>
-                        <th className="px-3 py-2">Mobile Number</th>
-                        <th className="px-3 py-2">Age</th>
-                        <th className="px-3 py-2">Location</th>
-                        <th className="px-3 py-2">Treatment</th>
-                        <th className="px-3 py-2">Caller</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">#</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Patient Name</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Patient Age</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Location</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Spouse Name</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Spouse Age</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Date (DD-MMM-YY)</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Time Stamp</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Mobile Number</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Alternate #</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Caller Name</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Lead Source</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Referred By</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Looking for Treatment</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Treatment Requirements</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Pre Conditions</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Surgery Details</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Follow Up Date</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Sub Dispositions</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Dispositions</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Valid Status</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Appointment Date</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Appointment Month</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Teleconsultation Slot</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Consultation Charges</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Surgery Date</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Surgery Cost</th>
+                        <th className="px-3 py-2.5 border-r border-slate-200 bg-slate-100">Surgery Payment Received</th>
+                        <th className="px-3 py-2.5 bg-slate-100">Notes</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {parsedLeads.slice(0, 5).map((lead, idx) => (
-                        <tr key={idx} className="hover:bg-slate-50">
-                          <td className="px-3 py-2 text-gray-600 font-mono">{idx + 1}</td>
-                          <td className="px-3 py-2 font-bold text-black">
+                      {parsedLeads.map((lead, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-3 py-2 text-gray-500 font-mono border-r border-slate-100 text-center font-semibold">
+                            {idx + 1}
+                          </td>
+                          <td className="px-3 py-2 font-bold text-black border-r border-slate-100">
                             {lead.patientName || "-"}
                           </td>
-                          <td className="px-3 py-2 font-mono text-black font-medium">
-                            {lead.mobileNumber || "-"}
-                          </td>
-                          <td className="px-3 py-2 font-mono text-black">
+                          <td className="px-3 py-2 font-mono text-black border-r border-slate-100 text-center">
                             {lead.patientAge || "-"}
                           </td>
-                          <td className="px-3 py-2 text-black">
+                          <td className="px-3 py-2 text-black border-r border-slate-100">
                             {lead.location || "-"}
                           </td>
-                          <td className="px-3 py-2 text-black font-medium">
+                          <td className="px-3 py-2 text-black border-r border-slate-100">
+                            {lead.spouseName || "-"}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-black border-r border-slate-100 text-center">
+                            {lead.spouseAge || "-"}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-black border-r border-slate-100">
+                            {lead.date || "-"}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-black border-r border-slate-100">
+                            {lead.leadTimestamp || "-"}
+                          </td>
+                          <td className="px-3 py-2 font-mono font-bold text-black border-r border-slate-100">
+                            {lead.mobileNumber || "-"}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-black border-r border-slate-100">
+                            {lead.alternateNumber || "-"}
+                          </td>
+                          <td className="px-3 py-2 text-black font-semibold border-r border-slate-100">
+                            {lead.callerName || "-"}
+                          </td>
+                          <td className="px-3 py-2 text-black border-r border-slate-100">
+                            {lead.leadSource || "-"}
+                          </td>
+                          <td className="px-3 py-2 text-black border-r border-slate-100">
+                            {lead.referredBy || "-"}
+                          </td>
+                          <td className="px-3 py-2 text-black font-medium border-r border-slate-100">
                             {lead.lookingForTreatment || "-"}
                           </td>
-                          <td className="px-3 py-2 text-black">
-                            {lead.callerName || "-"}
+                          <td className="px-3 py-2 text-black max-w-xs truncate border-r border-slate-100" title={lead.treatmentRequirements}>
+                            {lead.treatmentRequirements || "-"}
+                          </td>
+                          <td className="px-3 py-2 text-black max-w-xs truncate border-r border-slate-100" title={lead.preConditions}>
+                            {lead.preConditions || "-"}
+                          </td>
+                          <td className="px-3 py-2 text-black max-w-xs truncate border-r border-slate-100" title={lead.surgeryDetails}>
+                            {lead.surgeryDetails || "-"}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-black border-r border-slate-100">
+                            {lead.followUpDate || "-"}
+                          </td>
+                          <td className="px-3 py-2 text-black border-r border-slate-100">
+                            {lead.subDispositions || "-"}
+                          </td>
+                          <td className="px-3 py-2 text-black border-r border-slate-100">
+                            {lead.dispositions || "-"}
+                          </td>
+                          <td className="px-3 py-2 text-black border-r border-slate-100">
+                            {lead.validStatus || "-"}
+                          </td>
+                          <td className="px-3 py-2 font-mono font-medium text-black border-r border-slate-100">
+                            {lead.appointmentDate || "-"}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-black border-r border-slate-100">
+                            {lead.appointmentMonth || "-"}
+                          </td>
+                          <td className="px-3 py-2 text-black border-r border-slate-100">
+                            {lead.teleconsultationSlot || "-"}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-right text-black border-r border-slate-100">
+                            {lead.consultationCharges || "-"}
+                          </td>
+                          <td className="px-3 py-2 font-mono font-medium text-black border-r border-slate-100">
+                            {lead.surgeryDate || "-"}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-right text-black border-r border-slate-100">
+                            {lead.surgeryCost || "-"}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-right font-bold text-emerald-700 border-r border-slate-100">
+                            {lead.surgeryPaymentReceived || "-"}
+                          </td>
+                          <td className="px-3 py-2 text-black max-w-md truncate" title={lead.notes}>
+                            {lead.notes || "-"}
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-                {parsedLeads.length > 5 && (
-                  <p className="text-[11px] text-gray-600 mt-1.5 text-center font-medium">
-                    ...and {parsedLeads.length - 5} more leads will be imported.
-                  </p>
-                )}
+                <div className="flex items-center justify-between text-[11px] text-gray-600 px-1 pt-1 font-medium">
+                  <span>Showing all {parsedLeads.length} leads</span>
+                  <span>Scroll horizontally to view all 28 columns & vertically to view all rows</span>
+                </div>
               </div>
             </div>
           )}
