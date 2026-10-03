@@ -136,7 +136,7 @@ export async function PUT(
     const updateFields: any = {};
     if (name) updateFields.name = name;
     if (mobile) updateFields.mobile = mobile;
-    if (role && ["team_leader", "agent"].includes(role)) updateFields.role = role;
+    if (role && ["team_leader", "agent", "mis", "marketing"].includes(role)) updateFields.role = role;
     if (status && ["active", "inactive"].includes(status)) updateFields.status = status;
 
     // Optional password reset

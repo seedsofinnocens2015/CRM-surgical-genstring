@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
@@ -31,6 +31,7 @@ import {
   RotateCcw,
   ChevronRight,
   ArrowRight,
+  Megaphone,
 } from "lucide-react";
 import AdminSidebar from "@/app/components/AdminSidebar";
 import BulkAssignModal from "@/app/components/BulkAssignModal";
@@ -508,7 +509,13 @@ function getTodayISODate(): string {
             <div className="h-5 w-px bg-slate-200" />
             <div className="flex items-center gap-2">
               <span className="text-xs font-mono font-bold text-[#cc2727] bg-[#cc2727]/10 px-2.5 py-0.5 rounded-lg border border-[#cc2727]/20">
-                {formData.role === "team_leader" ? "TEAM LEADER" : "AGENT"}
+                {formData.role === "team_leader"
+                  ? "TEAM LEADER"
+                  : formData.role === "mis"
+                  ? "MIS"
+                  : formData.role === "marketing"
+                  ? "MARKETING"
+                  : "AGENT"}
               </span>
               <h1 className="text-sm sm:text-base font-bold text-black truncate max-w-[200px] sm:max-w-md">
                 {formData.name || "Member Profile"}
@@ -592,15 +599,29 @@ function getTodayISODate(): string {
                     className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${
                       formData.role === "team_leader"
                         ? "bg-slate-100 text-black border-slate-200"
+                        : formData.role === "mis"
+                        ? "bg-sky-50 text-sky-700 border-sky-200"
+                        : formData.role === "marketing"
+                        ? "bg-violet-50 text-violet-700 border-violet-200"
                         : "bg-[#cc2727]/10 text-[#cc2727] border-[#cc2727]/20"
                     }`}
                   >
                     {formData.role === "team_leader" ? (
                       <Shield className="w-3.5 h-3.5" />
+                    ) : formData.role === "mis" ? (
+                      <FileSpreadsheet className="w-3.5 h-3.5" />
+                    ) : formData.role === "marketing" ? (
+                      <Megaphone className="w-3.5 h-3.5" />
                     ) : (
                       <User className="w-3.5 h-3.5" />
                     )}
-                    {formData.role === "team_leader" ? "Team Leader" : "Agent"}
+                    {formData.role === "team_leader"
+                      ? "Team Leader"
+                      : formData.role === "mis"
+                      ? "MIS"
+                      : formData.role === "marketing"
+                      ? "Marketing"
+                      : "Agent"}
                   </span>
                 </div>
 
@@ -745,12 +766,36 @@ function getTodayISODate(): string {
               <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm">
                 <span className="text-xs text-black font-medium">System Role</span>
                 <div className="mt-2 flex items-center justify-between">
-                  <span className="text-xl font-bold text-black capitalize">Team Leader</span>
+                  <span className="text-xl font-bold text-black capitalize">
+                    {formData.role === "team_leader"
+                      ? "Team Leader"
+                      : formData.role === "mis"
+                      ? "MIS"
+                      : formData.role === "marketing"
+                      ? "Marketing"
+                      : "Agent"}
+                  </span>
                   <div className="p-2 rounded-xl bg-slate-100 text-black border border-slate-200">
-                    <Shield className="w-4 h-4" />
+                    {formData.role === "team_leader" ? (
+                      <Shield className="w-4 h-4" />
+                    ) : formData.role === "mis" ? (
+                      <FileSpreadsheet className="w-4 h-4 text-sky-600" />
+                    ) : formData.role === "marketing" ? (
+                      <Megaphone className="w-4 h-4 text-violet-600" />
+                    ) : (
+                      <User className="w-4 h-4 text-emerald-600" />
+                    )}
                   </div>
                 </div>
-                <p className="text-[11px] text-gray-600 mt-1">Supervises agents & leads distribution</p>
+                <p className="text-[11px] text-gray-600 mt-1">
+                  {formData.role === "team_leader"
+                    ? "Supervises agents & leads distribution"
+                    : formData.role === "mis"
+                    ? "Views all leads, exports reports, analyzes pipeline"
+                    : formData.role === "marketing"
+                    ? "Uploads leads, downloads data, and monitors campaign pipeline"
+                    : "Direct patient calling and follow-ups"}
+                </p>
               </div>
 
               <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm">
@@ -1254,6 +1299,8 @@ function getTodayISODate(): string {
                   >
                     <option value="agent">Agent</option>
                     <option value="team_leader">Team Leader</option>
+                    <option value="mis">MIS</option>
+                    <option value="marketing">Marketing</option>
                   </select>
                 </div>
 

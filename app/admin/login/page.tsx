@@ -35,6 +35,10 @@ export default function AdminLoginPage() {
         router.push("/admin/dashboard");
       } else if (data.user.role === "team_leader") {
         router.push("/team-leader/dashboard");
+      } else if (data.user.role === "mis") {
+        router.push("/mis/dashboard");
+      } else if (data.user.role === "marketing") {
+        router.push("/marketing/leads");
       } else {
         router.push("/agent/dashboard");
       }

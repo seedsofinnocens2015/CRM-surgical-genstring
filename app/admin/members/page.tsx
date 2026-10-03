@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -12,6 +12,8 @@ import {
   Calendar,
   CheckCircle,
   Sparkles,
+  FileSpreadsheet,
+  Megaphone,
 } from "lucide-react";
 import AdminSidebar from "@/app/components/AdminSidebar";
 import AddMemberModal from "@/app/components/AddMemberModal";
@@ -123,6 +125,8 @@ export default function AdminMembersPage() {
 
   const teamLeaderCount = members.filter((m) => m.role === "team_leader").length;
   const agentCount = members.filter((m) => m.role === "agent").length;
+  const misCount = members.filter((m) => m.role === "mis").length;
+  const marketingCount = members.filter((m) => m.role === "marketing").length;
 
   if (loading) {
     return (
@@ -163,7 +167,7 @@ export default function AdminMembersPage() {
           )}
 
           {/* Quick Counter Summary */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             <div className="p-4 rounded-xl bg-white border border-slate-200 flex items-center justify-between shadow-xs">
               <div>
                 <p className="text-[11px] font-bold text-gray-600 uppercase tracking-wider">
@@ -205,6 +209,34 @@ export default function AdminMembersPage() {
                 <User className="w-5 h-5" />
               </div>
             </div>
+
+            <div className="p-4 rounded-xl bg-white border border-slate-200 flex items-center justify-between shadow-xs">
+              <div>
+                <p className="text-[11px] font-bold text-gray-600 uppercase tracking-wider">
+                  MIS Members
+                </p>
+                <h4 className="text-2xl font-extrabold text-sky-700 mt-0.5 font-mono">
+                  {misCount}
+                </h4>
+              </div>
+              <div className="p-2.5 bg-sky-50 text-sky-700 rounded-lg">
+                <FileSpreadsheet className="w-5 h-5" />
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-white border border-slate-200 flex items-center justify-between shadow-xs">
+              <div>
+                <p className="text-[11px] font-bold text-gray-600 uppercase tracking-wider">
+                  Marketing
+                </p>
+                <h4 className="text-2xl font-extrabold text-violet-700 mt-0.5 font-mono">
+                  {marketingCount}
+                </h4>
+              </div>
+              <div className="p-2.5 bg-violet-50 text-violet-700 rounded-lg">
+                <Megaphone className="w-5 h-5" />
+              </div>
+            </div>
           </div>
 
           {/* Staff & Team Members Table Container */}
@@ -213,7 +245,7 @@ export default function AdminMembersPage() {
               <div>
                 <h2 className="text-base font-bold text-black">Staff & Team Members</h2>
                 <p className="text-xs text-gray-600 mt-0.5">
-                  Full list of active Team Leaders and Agents
+                  Full list of active Team Leaders, Agents, and MIS members
                 </p>
               </div>
 
@@ -248,6 +280,26 @@ export default function AdminMembersPage() {
                   }`}
                 >
                   Agents ({agentCount})
+                </button>
+                <button
+                  onClick={() => setFilterRole("mis")}
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    filterRole === "mis"
+                      ? "bg-[#cc2727] text-white shadow-xs font-bold"
+                      : "text-black hover:text-black"
+                  }`}
+                >
+                  MIS ({misCount})
+                </button>
+                <button
+                  onClick={() => setFilterRole("marketing")}
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    filterRole === "marketing"
+                      ? "bg-[#cc2727] text-white shadow-xs font-bold"
+                      : "text-black hover:text-black"
+                  }`}
+                >
+                  Marketing ({marketingCount})
                 </button>
               </div>
             </div>
@@ -305,6 +357,10 @@ export default function AdminMembersPage() {
                               className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 transition-transform group-hover:scale-105 ${
                                 member.role === "team_leader"
                                   ? "bg-[#cc2727]/10 text-[#cc2727] border border-[#cc2727]/20"
+                                  : member.role === "mis"
+                                  ? "bg-sky-50 text-sky-700 border border-sky-200"
+                                  : member.role === "marketing"
+                                  ? "bg-violet-50 text-violet-700 border border-violet-200"
                                   : "bg-emerald-50 text-emerald-700 border border-emerald-200"
                               }`}
                             >
@@ -326,6 +382,16 @@ export default function AdminMembersPage() {
                             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[#cc2727]/10 text-[#cc2727] border border-[#cc2727]/20">
                               <Shield className="w-3.5 h-3.5" />
                               Team Leader
+                            </span>
+                          ) : member.role === "mis" ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200">
+                              <FileSpreadsheet className="w-3.5 h-3.5" />
+                              MIS
+                            </span>
+                          ) : member.role === "marketing" ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-200">
+                              <Megaphone className="w-3.5 h-3.5" />
+                              Marketing
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">

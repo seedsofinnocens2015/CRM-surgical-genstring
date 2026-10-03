@@ -60,7 +60,7 @@ export async function GET() {
 
     await connectDB();
     const members = await User.find({
-      role: { $in: ["team_leader", "agent"] },
+      role: { $in: ["team_leader", "agent", "mis", "marketing"] },
     })
       .select("-password")
       .sort({ createdAt: -1 })
@@ -111,9 +111,9 @@ export async function POST(req: Request) {
         );
       }
     } else {
-      if (!["team_leader", "agent"].includes(role)) {
+      if (!["team_leader", "agent", "mis", "marketing"].includes(role)) {
         return NextResponse.json(
-          { error: "Invalid role selected. Must be Team Leader or Agent." },
+          { error: "Invalid role selected. Must be Team Leader, Agent, MIS, or Marketing." },
           { status: 400 }
         );
       }
@@ -140,9 +140,11 @@ export async function POST(req: Request) {
       createdBy: authUser.id,
     });
 
+    const roleName = role === "team_leader" ? "Team Leader" : role === "mis" ? "MIS" : role === "marketing" ? "Marketing" : "Agent";
+
     return NextResponse.json(
       {
-        message: `${role === "team_leader" ? "Team Leader" : "Agent"} added successfully!`,
+        message: `${roleName} added successfully!`,
         member: {
           _id: newMember._id,
           name: newMember.name,

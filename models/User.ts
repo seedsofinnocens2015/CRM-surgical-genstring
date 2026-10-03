@@ -5,7 +5,7 @@ export interface IUser extends Document {
   mobile: string;
   email: string;
   password?: string;
-  role: "admin" | "team_leader" | "agent";
+  role: "admin" | "team_leader" | "agent" | "mis" | "marketing";
   status?: "active" | "inactive";
   createdBy?: mongoose.Types.ObjectId;
   createdAt: Date;
@@ -37,7 +37,7 @@ const UserSchema = new Schema<IUser>(
     },
     role: {
       type: String,
-      enum: ["admin", "team_leader", "agent"],
+      enum: ["admin", "team_leader", "agent", "mis", "marketing"],
       default: "agent",
     },
     status: {

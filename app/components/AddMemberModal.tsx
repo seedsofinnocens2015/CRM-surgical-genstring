@@ -1,7 +1,7 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
-import { X, UserPlus, Shield, User } from "lucide-react";
+import { X, UserPlus, Shield, User, FileSpreadsheet, Megaphone } from "lucide-react";
 
 interface AddMemberModalProps {
   isOpen: boolean;
@@ -21,7 +21,7 @@ export default function AddMemberModal({
     mobile: "",
     email: "",
     password: "",
-    role: (allowedRole || "agent") as "team_leader" | "agent",
+    role: (allowedRole || "agent") as "team_leader" | "agent" | "mis" | "marketing",
   });
 
   const [loading, setLoading] = useState(false);
@@ -80,7 +80,7 @@ export default function AddMemberModal({
           <div>
             <h3 className="text-xl font-bold text-black">Add New Member</h3>
             <p className="text-xs text-black">
-              Create a Team Leader or Agent credential
+              Create a Team Leader, Agent, or MIS credential
             </p>
           </div>
         </div>
@@ -176,9 +176,9 @@ export default function AddMemberModal({
                 </span>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                 <label
-                  className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                  className={`flex flex-col items-center justify-center p-3 rounded-xl border cursor-pointer transition-all text-center ${
                     formData.role === "team_leader"
                       ? "bg-[#cc2727]/10 border-[#cc2727] text-black font-semibold"
                       : "bg-white border-slate-200 text-black hover:border-slate-300"
@@ -194,25 +194,15 @@ export default function AddMemberModal({
                     }
                     className="hidden"
                   />
-                  <div
-                    className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                      formData.role === "team_leader"
-                        ? "border-[#cc2727]"
-                        : "border-slate-400"
-                    }`}
-                  >
-                    {formData.role === "team_leader" && (
-                      <div className="w-2 h-2 rounded-full bg-[#cc2727]" />
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 mb-1">
                     <Shield className="w-4 h-4 text-[#cc2727]" />
-                    <span className="text-sm font-semibold">Team Leader</span>
+                    <span className="text-xs font-bold">Team Leader</span>
                   </div>
+                  <span className="text-[10px] text-gray-500">Manage Team</span>
                 </label>
 
                 <label
-                  className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                  className={`flex flex-col items-center justify-center p-3 rounded-xl border cursor-pointer transition-all text-center ${
                     formData.role === "agent"
                       ? "bg-[#cc2727]/10 border-[#cc2727] text-black font-semibold"
                       : "bg-white border-slate-200 text-black hover:border-slate-300"
@@ -226,21 +216,55 @@ export default function AddMemberModal({
                     onChange={() => setFormData({ ...formData, role: "agent" })}
                     className="hidden"
                   />
-                  <div
-                    className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                      formData.role === "agent"
-                        ? "border-[#cc2727]"
-                        : "border-slate-400"
-                    }`}
-                  >
-                    {formData.role === "agent" && (
-                      <div className="w-2 h-2 rounded-full bg-[#cc2727]" />
-                    )}
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <User className="w-4 h-4 text-emerald-600" />
+                    <span className="text-xs font-bold">Agent</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <User className="w-4 h-4 text-[#cc2727]" />
-                    <span className="text-sm font-semibold">Agent</span>
+                  <span className="text-[10px] text-gray-500">Calling & Leads</span>
+                </label>
+
+                <label
+                  className={`flex flex-col items-center justify-center p-3 rounded-xl border cursor-pointer transition-all text-center ${
+                    formData.role === "mis"
+                      ? "bg-[#cc2727]/10 border-[#cc2727] text-black font-semibold"
+                      : "bg-white border-slate-200 text-black hover:border-slate-300"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="role"
+                    value="mis"
+                    checked={formData.role === "mis"}
+                    onChange={() => setFormData({ ...formData, role: "mis" })}
+                    className="hidden"
+                  />
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <FileSpreadsheet className="w-4 h-4 text-sky-600" />
+                    <span className="text-xs font-bold">MIS</span>
                   </div>
+                  <span className="text-[10px] text-gray-500">Reports & View</span>
+                </label>
+
+                <label
+                  className={`flex flex-col items-center justify-center p-3 rounded-xl border cursor-pointer transition-all text-center ${
+                    formData.role === "marketing"
+                      ? "bg-[#cc2727]/10 border-[#cc2727] text-black font-semibold"
+                      : "bg-white border-slate-200 text-black hover:border-slate-300"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="role"
+                    value="marketing"
+                    checked={formData.role === "marketing"}
+                    onChange={() => setFormData({ ...formData, role: "marketing" })}
+                    className="hidden"
+                  />
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Megaphone className="w-4 h-4 text-violet-600" />
+                    <span className="text-xs font-bold">Marketing</span>
+                  </div>
+                  <span className="text-[10px] text-gray-500">Upload & Leads</span>
                 </label>
               </div>
             )}
