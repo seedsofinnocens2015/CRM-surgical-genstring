@@ -139,7 +139,10 @@ export async function PUT(
       }
 
       // If either was previously filled, at least one of Notes or Sub Dispositions must be updated
-      const oldNotes = (existingLead.notes || "").trim();
+      const latestNoteInHistory = (existingLead.notesHistory && existingLead.notesHistory.length > 0)
+        ? (existingLead.notesHistory[0]?.newNotes || "").trim()
+        : "";
+      const oldNotes = (existingLead.notes || "").trim() || latestNoteInHistory;
       const oldSubDisp = (existingLead.subDispositions || "").trim();
       const hadExistingData = oldNotes !== "" || oldSubDisp !== "";
 
@@ -150,6 +153,30 @@ export async function PUT(
         );
       }
     }
+
+    // Handle Notes & Observations dedicated history and field reset
+    const submittedNotes = (body.notes || "").trim();
+    if (submittedNotes) {
+      const currentNotesHistory = existingLead.notesHistory || [];
+      const previousNote =
+        (existingLead.notes || "").trim() ||
+        (currentNotesHistory.length > 0 ? (currentNotesHistory[0]?.newNotes || "").trim() : "");
+
+      const newNoteEntry = {
+        performedBy: session.name || "Unknown Member",
+        performedByRole: session.role || "unknown",
+        performedByEmail: session.email || "",
+        timestamp: new Date().toISOString(),
+        oldNotes: previousNote,
+        newNotes: submittedNotes,
+      };
+
+      body.notesHistory = [newNoteEntry, ...currentNotesHistory];
+    } else {
+      body.notesHistory = existingLead.notesHistory || [];
+    }
+    // As per requirement: Notes & Observations field becomes blank after saving
+    body.notes = "";
 
     // Track field differences for audit log
     const FIELD_LABELS: Record<string, string> = {
@@ -183,7 +210,6 @@ export async function PUT(
       surgeryDate: "Surgery Date",
       surgeryCost: "Surgery Cost",
       surgeryPaymentReceived: "Surgery Payment Received",
-      notes: "Notes",
     };
 
     const changes: Array<{
@@ -200,8 +226,10 @@ export async function PUT(
       "createdAt",
       "updatedAt",
       "auditLogs",
+      "notesHistory",
       "createdBy",
       "treatment",
+      "notes",
       "phoneNumber", // alias of mobileNumber
       "dateOfLead", // alias of date
     ]);

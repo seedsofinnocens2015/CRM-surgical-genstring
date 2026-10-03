@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import TeamLeaderSidebar from "@/app/components/TeamLeaderSidebar";
 import LeadAuditHistory, { AuditLog } from "@/app/components/LeadAuditHistory";
+import NotesHistory, { NoteHistoryItem } from "@/app/components/NotesHistory";
 import {
   LOCATIONS,
   TREATMENTS,
@@ -53,6 +54,7 @@ export default function TeamLeaderLeadDetailPage({
   const [toastMessage, setToastMessage] = useState("");
   const [callerOptions, setCallerOptions] = useState<string[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [notesHistory, setNotesHistory] = useState<NoteHistoryItem[]>([]);
   const [formFields, setFormFields] = useState<IFormField[]>(DEFAULT_FORM_FIELDS);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, any>>({});
   const [subDispositionMappings, setSubDispositionMappings] = useState<
@@ -237,6 +239,7 @@ export default function TeamLeaderLeadDetailPage({
           });
           setCustomFieldValues(l.customFields || {});
           setAuditLogs(l.auditLogs || []);
+          setNotesHistory(l.notesHistory || []);
         }
       } catch (err: any) {
         setError(err.message || "Failed to load lead details");
@@ -519,6 +522,14 @@ export default function TeamLeaderLeadDetailPage({
       if (data.lead?.auditLogs) {
         setAuditLogs(data.lead.auditLogs);
       }
+      if (data.lead?.notesHistory) {
+        setNotesHistory(data.lead.notesHistory);
+      }
+      // Blank out Section 5 notes field as requested
+      setFormData((prev: any) => ({
+        ...prev,
+        notes: "",
+      }));
       setToastMessage("Lead details updated successfully!");
       notifyLeadUpdated();
       setTimeout(() => setToastMessage(""), 4000);
@@ -1270,8 +1281,12 @@ export default function TeamLeaderLeadDetailPage({
           </form>
         </div>
 
-        {/* Right Column: Lead Audit Change History */}
-        <div className="xl:col-span-4 sticky top-20">
+        {/* Right Column: Notes History + Change History */}
+        <div className="xl:col-span-4 space-y-6">
+          <NotesHistory
+            notesHistory={notesHistory}
+            leadUniqueId={formData.uniqueId}
+          />
           <LeadAuditHistory
             auditLogs={auditLogs}
             leadCreatedAt={formData.createdAt || formData.leadTimestamp}

@@ -16,6 +16,16 @@ export interface IAuditLog {
   changes: IChangeItem[];
 }
 
+export interface INoteHistory {
+  _id?: string;
+  performedBy: string;
+  performedByRole: string; // "admin" | "team_leader" | "agent"
+  performedByEmail?: string;
+  timestamp: string;
+  oldNotes?: string;
+  newNotes: string;
+}
+
 export interface ILead extends Document {
   uniqueId: string;
   date: string;
@@ -55,6 +65,8 @@ export interface ILead extends Document {
   customFields?: Record<string, any>;
   // Audit logs / change history
   auditLogs?: IAuditLog[];
+  // Dedicated Notes & Observations history
+  notesHistory?: INoteHistory[];
   // Legacy aliases
   phoneNumber?: string;
   dateOfLead?: string;
@@ -80,6 +92,18 @@ const AuditLogSchema = new Schema<IAuditLog>(
     performedByEmail: { type: String, default: "" },
     timestamp: { type: String, default: () => new Date().toISOString() },
     changes: [ChangeItemSchema],
+  },
+  { _id: true }
+);
+
+const NoteHistorySchema = new Schema<INoteHistory>(
+  {
+    performedBy: { type: String, required: true },
+    performedByRole: { type: String, required: true },
+    performedByEmail: { type: String, default: "" },
+    timestamp: { type: String, default: () => new Date().toISOString() },
+    oldNotes: { type: String, default: "" },
+    newNotes: { type: String, required: true },
   },
   { _id: true }
 );
@@ -275,6 +299,10 @@ const LeadSchema = new Schema<ILead>(
     },
     auditLogs: {
       type: [AuditLogSchema],
+      default: [],
+    },
+    notesHistory: {
+      type: [NoteHistorySchema],
       default: [],
     },
   },
