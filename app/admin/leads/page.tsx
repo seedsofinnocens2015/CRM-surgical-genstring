@@ -670,6 +670,13 @@ export default function AdminLeadsPage() {
       }
 
       return true;
+    }).sort((a, b) => {
+      const numA = parseInt((a.uniqueId || "").replace(/\D/g, ""), 10) || 0;
+      const numB = parseInt((b.uniqueId || "").replace(/\D/g, ""), 10) || 0;
+      if (numA !== numB) return numB - numA;
+      const dateA = new Date(a.createdAt || a.date || 0).getTime();
+      const dateB = new Date(b.createdAt || b.date || 0).getTime();
+      return dateB - dateA;
     });
   }, [leads, searchQuery, filters]);
 

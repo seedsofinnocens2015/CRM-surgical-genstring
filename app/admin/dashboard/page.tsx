@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState, useMemo, Fragment } from "react";
 import { useRouter } from "next/navigation";
@@ -236,13 +236,23 @@ export default function AdminDashboard() {
     };
   }, [router]);
 
-  // Extract distinct months present in the leads
+  // Extract distinct months present in the leads chronologically
   const distinctMonths = useMemo(() => {
     const set = new Set<string>();
     leads.forEach((l) => {
-      if (l.month) set.add(l.month);
+      let lm = (l.month || "").trim();
+      if (!lm && l.date) lm = getMonthFromDate(l.date);
+      if (lm) set.add(lm);
+
+      let am = (l.appointmentMonth || "").trim();
+      if (!am && l.appointmentDate) am = getMonthFromDate(l.appointmentDate);
+      if (am) set.add(am);
+
+      let sm = (l.surgeryMonth || "").trim();
+      if (!sm && l.surgeryDate) sm = getMonthFromDate(l.surgeryDate);
+      if (sm) set.add(sm);
     });
-    return Array.from(set).sort();
+    return Array.from(set).sort((a, b) => parseMonthToSortKey(a) - parseMonthToSortKey(b));
   }, [leads]);
 
   // Extract distinct locations present in the leads
@@ -258,7 +268,11 @@ export default function AdminDashboard() {
   // Filter leads based on month selection (for daily views)
   const filteredLeads = useMemo(() => {
     if (selectedMonth === "All") return leads;
-    return leads.filter((l) => l.month === selectedMonth);
+    return leads.filter((l) => {
+      let m = (l.month || "").trim();
+      if (!m && l.date) m = getMonthFromDate(l.date);
+      return m === selectedMonth;
+    });
   }, [leads, selectedMonth]);
 
   // Calculate Overall KPI Metrics
@@ -350,9 +364,17 @@ export default function AdminDashboard() {
         totalOther++;
       }
 
-      dateMap[d].grandTotal++;
-      grandTotalSum++;
+      const rowSum =
+        dateMap[d].closed +
+        dateMap[d].contactAttempt +
+        dateMap[d].contacted +
+        dateMap[d].converted +
+        dateMap[d].other;
+      dateMap[d].grandTotal = rowSum;
     });
+
+    grandTotalSum =
+      totalClosed + totalContactAttempt + totalContacted + totalConverted + totalOther;
 
     const rows = Object.values(dateMap).sort((a, b) => a.dateSortKey - b.dateSortKey);
 
@@ -426,9 +448,17 @@ export default function AdminDashboard() {
         totalOther++;
       }
 
-      monthMap[monthKey].grandTotal++;
-      grandTotalSum++;
+      const rowSum =
+        monthMap[monthKey].closed +
+        monthMap[monthKey].contactAttempt +
+        monthMap[monthKey].contacted +
+        monthMap[monthKey].converted +
+        monthMap[monthKey].other;
+      monthMap[monthKey].grandTotal = rowSum;
     });
+
+    grandTotalSum =
+      totalClosed + totalContactAttempt + totalContacted + totalConverted + totalOther;
 
     const rows = Object.values(monthMap).sort((a, b) => a.monthSortKey - b.monthSortKey);
 
@@ -496,9 +526,11 @@ export default function AdminDashboard() {
         totalOther++;
       }
 
-      monthMap[monthKey].grandTotal++;
-      grandTotalSum++;
+      const rowSum = monthMap[monthKey].invalid + monthMap[monthKey].na + monthMap[monthKey].valid;
+      monthMap[monthKey].grandTotal = rowSum;
     });
+
+    grandTotalSum = totalInvalid + totalNa + totalValid;
 
     const rows = Object.values(monthMap).sort((a, b) => a.monthSortKey - b.monthSortKey);
     const totalValidPercent = grandTotalSum > 0 ? ((totalValid / grandTotalSum) * 100).toFixed(2) + "%" : "0.00%";
@@ -540,7 +572,7 @@ export default function AdminDashboard() {
       if (!m && l.appointmentDate) {
         m = getMonthFromDate(l.appointmentDate);
       }
-      return m === selectedMonth || l.month === selectedMonth;
+      return m === selectedMonth;
     });
 
     if (selectedLocation !== "All") {
@@ -600,7 +632,14 @@ export default function AdminDashboard() {
     let totalCount = 0;
     let totalCollections = 0;
 
-    leads.forEach((lead) => {
+    let sourceLeads = leads;
+    if (selectedLocation !== "All") {
+      sourceLeads = sourceLeads.filter(
+        (l) => (l.location || l.otherCity || "") === selectedLocation
+      );
+    }
+
+    sourceLeads.forEach((lead) => {
       let m = (lead.appointmentMonth || "").trim();
       if (!m && lead.appointmentDate) {
         m = getMonthFromDate(lead.appointmentDate);
@@ -636,7 +675,7 @@ export default function AdminDashboard() {
         collections: totalCollections,
       },
     };
-  }, [leads]);
+  }, [leads, selectedLocation]);
 
   // 6. Build Surgery Month Summary (Count & Surgery - Payment Received - Screenshot 5)
   const surgeryMonthData = useMemo(() => {
@@ -723,11 +762,12 @@ export default function AdminDashboard() {
     let totalPaymentReceived = 0;
 
     let sourceLeads = selectedMonth === "All" ? leads : leads.filter((l) => {
+      if (!l.surgeryDate) return false;
       let m = (l.surgeryMonth || "").trim();
-      if (!m && l.surgeryDate) {
+      if (!m) {
         m = getMonthFromDate(l.surgeryDate);
       }
-      return m === selectedMonth || l.month === selectedMonth;
+      return m === selectedMonth;
     });
 
     if (selectedLocation !== "All") {
@@ -737,35 +777,29 @@ export default function AdminDashboard() {
     }
 
     sourceLeads.forEach((lead) => {
+      const d = (lead.surgeryDate || "").trim();
+      // Only include if surgeryDate is present and not blank
+      if (!d) return;
+
       const payment = parseCurrencyNumber(lead.surgeryPaymentReceived);
-      const cost = parseCurrencyNumber(lead.surgeryCost);
-      const hasSurgery =
-        !!lead.surgeryDate ||
-        !!lead.surgeryMonth ||
-        payment > 0 ||
-        cost > 0;
+      const dateKey = d;
+      const loc = (lead.location || lead.otherCity || "Unspecified").trim();
+      const groupKey = `${dateKey}___${loc}`;
 
-      if (hasSurgery) {
-        const d = (lead.surgeryDate || "").trim();
-        const dateKey = d || "Unknown";
-        const loc = (lead.location || lead.otherCity || "Unspecified").trim();
-        const groupKey = `${dateKey}___${loc}`;
-
-        if (!dateMap[groupKey]) {
-          dateMap[groupKey] = {
-            date: dateKey,
-            location: loc,
-            dateSortKey: parseDateToSortKey(dateKey),
-            count: 0,
-            paymentReceived: 0,
-          };
-        }
-
-        dateMap[groupKey].count += 1;
-        dateMap[groupKey].paymentReceived += payment;
-        totalCount += 1;
-        totalPaymentReceived += payment;
+      if (!dateMap[groupKey]) {
+        dateMap[groupKey] = {
+          date: dateKey,
+          location: loc,
+          dateSortKey: parseDateToSortKey(dateKey),
+          count: 0,
+          paymentReceived: 0,
+        };
       }
+
+      dateMap[groupKey].count += 1;
+      dateMap[groupKey].paymentReceived += payment;
+      totalCount += 1;
+      totalPaymentReceived += payment;
     });
 
     const rows = Object.values(dateMap).sort((a, b) => a.dateSortKey - b.dateSortKey);
@@ -1091,20 +1125,20 @@ export default function AdminDashboard() {
       // 1. Lead Summary FTD
       const ftdRows = ftdData.rows.map((r) => ({
         Date: r.date,
-        " ": r.other || "",
         Closed: r.closed || "",
         "Contact Attempt": r.contactAttempt || "",
         Contacted: r.contacted || "",
         Converted: r.converted || "",
+        "Unassigned leads": r.other || "",
         "Grand Total": r.grandTotal,
       }));
       ftdRows.push({
         Date: "Grand Total",
-        " ": ftdData.totals.other || "",
         Closed: ftdData.totals.closed || "",
         "Contact Attempt": ftdData.totals.contactAttempt || "",
         Contacted: ftdData.totals.contacted || "",
         Converted: ftdData.totals.converted || "",
+        "Unassigned leads": ftdData.totals.other || "",
         "Grand Total": ftdData.totals.grandTotal,
       });
       XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(ftdRows), "Lead Summary FTD");
@@ -1112,20 +1146,20 @@ export default function AdminDashboard() {
       // 2. Lead Summary MTD
       const mtdRows = mtdData.rows.map((r) => ({
         Month: r.month,
-        " ": r.other || "",
         Closed: r.closed || "",
         "Contact Attempt": r.contactAttempt || "",
         Contacted: r.contacted || "",
         Converted: r.converted || "",
+        "Unassigned leads": r.other || "",
         "Grand Total": r.grandTotal,
       }));
       mtdRows.push({
         Month: "Grand Total",
-        " ": mtdData.totals.other || "",
         Closed: mtdData.totals.closed || "",
         "Contact Attempt": mtdData.totals.contactAttempt || "",
         Contacted: mtdData.totals.contacted || "",
         Converted: mtdData.totals.converted || "",
+        "Unassigned leads": mtdData.totals.other || "",
         "Grand Total": mtdData.totals.grandTotal,
       });
       XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(mtdRows), "Lead Summary MTD");
@@ -1133,7 +1167,6 @@ export default function AdminDashboard() {
       // 3. Valid Summary
       const validRows = validSummaryData.rows.map((r) => ({
         Month: r.month,
-        " ": r.other || "",
         Invalid: r.invalid || "",
         NA: r.na || "",
         Valid: r.valid || "",
@@ -1142,7 +1175,6 @@ export default function AdminDashboard() {
       }));
       validRows.push({
         Month: "Grand Total",
-        " ": validSummaryData.totals.other || "",
         Invalid: validSummaryData.totals.invalid || "",
         NA: validSummaryData.totals.na || "",
         Valid: validSummaryData.totals.valid || "",
@@ -1529,11 +1561,11 @@ export default function AdminDashboard() {
                             </th>
                           </tr>
                           <tr className="bg-[#5c768d] text-black text-[12px] font-bold border-b border-slate-300">
-                            <th className="px-4 py-2 border-r border-slate-600/50 min-w-[50px] text-black"></th>
                             <th className="px-6 py-2 border-r border-slate-600/50 min-w-[80px]">Closed</th>
                             <th className="px-6 py-2 border-r border-slate-600/50 min-w-[120px]">Contact Attempt</th>
                             <th className="px-6 py-2 border-r border-slate-600/50 min-w-[90px]">Contacted</th>
                             <th className="px-6 py-2 border-r border-slate-600/50 min-w-[90px]">Converted</th>
+                            <th className="px-6 py-2 border-r border-slate-600/50 min-w-[120px]">Blank Disposition</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100/40 text-xs font-mono font-medium">
@@ -1542,11 +1574,11 @@ export default function AdminDashboard() {
                               <td className="px-6 py-2.5 text-left font-sans font-semibold text-black border-r border-slate-200 sticky left-0 bg-white group-hover:bg-slate-100 transition-colors">
                                 {row.date}
                               </td>
-                              <td className="px-4 py-2.5 border-r border-slate-200/50 text-gray-500">{row.other > 0 ? row.other : ""}</td>
                               <td className="px-6 py-2.5 border-r border-slate-200/50 text-black">{row.closed > 0 ? row.closed : ""}</td>
                               <td className="px-6 py-2.5 border-r border-slate-200/50 text-black">{row.contactAttempt > 0 ? row.contactAttempt : ""}</td>
                               <td className="px-6 py-2.5 border-r border-slate-200/50 text-black">{row.contacted > 0 ? row.contacted : ""}</td>
                               <td className="px-6 py-2.5 border-r border-slate-200/50 text-[#cc2727] font-semibold">{row.converted > 0 ? row.converted : ""}</td>
+                              <td className="px-6 py-2.5 border-r border-slate-200/50 text-amber-700 font-semibold">{row.other > 0 ? row.other : ""}</td>
                               <td className="px-6 py-2.5 text-right font-bold text-black group-hover:text-[#cc2727]">{row.grandTotal}</td>
                             </tr>
                           ))}
@@ -1554,11 +1586,11 @@ export default function AdminDashboard() {
                         <tfoot className="sticky bottom-0 z-20 bg-white text-black font-mono font-bold text-xs shadow-sm">
                           <tr className="border-t-2 border-double border-slate-400/60 bg-white">
                             <td className="px-6 py-3.5 text-left font-sans font-extrabold text-sm text-black border-r border-slate-200 sticky left-0 bg-white z-30">Grand Total</td>
-                            <td className="px-4 py-3.5 border-r border-slate-200 text-black">{ftdData.totals.other > 0 ? ftdData.totals.other : ""}</td>
                             <td className="px-6 py-3.5 border-r border-slate-200 text-black">{ftdData.totals.closed}</td>
                             <td className="px-6 py-3.5 border-r border-slate-200 text-black">{ftdData.totals.contactAttempt}</td>
                             <td className="px-6 py-3.5 border-r border-slate-200 text-black">{ftdData.totals.contacted}</td>
                             <td className="px-6 py-3.5 border-r border-slate-200 text-[#cc2727] font-extrabold">{ftdData.totals.converted}</td>
+                            <td className="px-6 py-3.5 border-r border-slate-200 text-amber-700 font-extrabold">{ftdData.totals.other}</td>
                             <td className="px-6 py-3.5 text-right text-sm font-extrabold text-[#cc2727]">{ftdData.totals.grandTotal}</td>
                           </tr>
                         </tfoot>
@@ -1599,11 +1631,11 @@ export default function AdminDashboard() {
                             </th>
                           </tr>
                           <tr className="bg-[#5c768d] text-black text-[12px] font-bold border-b border-slate-300">
-                            <th className="px-4 py-2 border-r border-slate-600/50 min-w-[50px] text-black"></th>
                             <th className="px-6 py-2 border-r border-slate-600/50 min-w-[80px]">Closed</th>
                             <th className="px-6 py-2 border-r border-slate-600/50 min-w-[120px]">Contact Attempt</th>
                             <th className="px-6 py-2 border-r border-slate-600/50 min-w-[90px]">Contacted</th>
                             <th className="px-6 py-2 border-r border-slate-600/50 min-w-[90px]">Converted</th>
+                            <th className="px-6 py-2 border-r border-slate-600/50 min-w-[120px]">Blank Disposition</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100/40 text-xs font-mono font-medium">
@@ -1612,11 +1644,11 @@ export default function AdminDashboard() {
                               <td className="px-6 py-3.5 text-left font-sans font-bold text-black border-r border-slate-200 sticky left-0 bg-white group-hover:bg-slate-100 transition-colors">
                                 {row.month}
                               </td>
-                              <td className="px-4 py-3.5 border-r border-slate-200/50 text-gray-500">{row.other > 0 ? row.other : ""}</td>
                               <td className="px-6 py-3.5 border-r border-slate-200/50 text-black">{row.closed > 0 ? row.closed : ""}</td>
                               <td className="px-6 py-3.5 border-r border-slate-200/50 text-black">{row.contactAttempt > 0 ? row.contactAttempt : ""}</td>
                               <td className="px-6 py-3.5 border-r border-slate-200/50 text-black">{row.contacted > 0 ? row.contacted : ""}</td>
                               <td className="px-6 py-3.5 border-r border-slate-200/50 text-[#cc2727] font-semibold">{row.converted > 0 ? row.converted : ""}</td>
+                              <td className="px-6 py-3.5 border-r border-slate-200/50 text-amber-700 font-semibold">{row.other > 0 ? row.other : ""}</td>
                               <td className="px-6 py-3.5 text-right font-extrabold text-black group-hover:text-[#cc2727]">{row.grandTotal}</td>
                             </tr>
                           ))}
@@ -1624,11 +1656,11 @@ export default function AdminDashboard() {
                         <tfoot className="sticky bottom-0 z-20 bg-white text-black font-mono font-bold text-xs shadow-sm">
                           <tr className="border-t-2 border-double border-slate-400/60 bg-white">
                             <td className="px-6 py-3.5 text-left font-sans font-extrabold text-sm text-black border-r border-slate-200 sticky left-0 bg-white z-30">Grand Total</td>
-                            <td className="px-4 py-3.5 border-r border-slate-200 text-black">{mtdData.totals.other > 0 ? mtdData.totals.other : ""}</td>
                             <td className="px-6 py-3.5 border-r border-slate-200 text-black">{mtdData.totals.closed}</td>
                             <td className="px-6 py-3.5 border-r border-slate-200 text-black">{mtdData.totals.contactAttempt}</td>
                             <td className="px-6 py-3.5 border-r border-slate-200 text-black">{mtdData.totals.contacted}</td>
                             <td className="px-6 py-3.5 border-r border-slate-200 text-[#cc2727] font-extrabold">{mtdData.totals.converted}</td>
+                            <td className="px-6 py-3.5 border-r border-slate-200 text-amber-700 font-extrabold">{mtdData.totals.other}</td>
                             <td className="px-6 py-3.5 text-right text-sm font-extrabold text-[#cc2727]">{mtdData.totals.grandTotal}</td>
                           </tr>
                         </tfoot>
@@ -1661,14 +1693,13 @@ export default function AdminDashboard() {
                               <div className="text-[11px] text-gray-500 font-normal">Valid Summary</div>
                               <div className="text-sm font-extrabold text-black mt-0.5">Month</div>
                             </th>
-                            <th colSpan={4} className="py-2.5 px-4 text-center font-bold text-[#cc2727] italic tracking-wider bg-white border-r border-slate-200 text-xs">
+                            <th colSpan={3} className="py-2.5 px-4 text-center font-bold text-[#cc2727] italic tracking-wider bg-white border-r border-slate-200 text-xs">
                               Valid Status
                             </th>
                             <th rowSpan={2} className="px-6 py-3 text-right font-extrabold text-black bg-white border-r border-slate-200 min-w-[100px]">Grand Total</th>
                             <th rowSpan={2} className="px-6 py-3 text-right font-extrabold text-black bg-[#7ba0cd] min-w-[90px]">Valid %</th>
                           </tr>
                           <tr className="bg-[#5c768d] text-black text-[12px] font-bold border-b border-slate-300">
-                            <th className="px-4 py-2 border-r border-slate-600/50 min-w-[50px] text-black"></th>
                             <th className="px-6 py-2 border-r border-slate-600/50 min-w-[80px]">Invalid</th>
                             <th className="px-6 py-2 border-r border-slate-600/50 min-w-[80px]">NA</th>
                             <th className="px-6 py-2 border-r border-slate-600/50 min-w-[80px]">Valid</th>
@@ -1680,7 +1711,6 @@ export default function AdminDashboard() {
                               <td className="px-6 py-3.5 text-left font-sans font-bold text-black border-r border-slate-200 sticky left-0 bg-white group-hover:bg-slate-100 transition-colors">
                                 {row.month}
                               </td>
-                              <td className="px-4 py-3.5 border-r border-slate-200/50 text-gray-500">{row.other > 0 ? row.other : ""}</td>
                               <td className="px-6 py-3.5 border-r border-slate-200/50 text-rose-300">{row.invalid > 0 ? row.invalid : ""}</td>
                               <td className="px-6 py-3.5 border-r border-slate-200/50 text-black">{row.na > 0 ? row.na : ""}</td>
                               <td className="px-6 py-3.5 border-r border-slate-200/50 text-[#cc2727] font-bold">{row.valid > 0 ? row.valid : ""}</td>
@@ -1692,7 +1722,6 @@ export default function AdminDashboard() {
                         <tfoot className="sticky bottom-0 z-20 bg-white text-black font-mono font-bold text-xs shadow-sm">
                           <tr className="border-t-2 border-double border-slate-400/60 bg-white">
                             <td className="px-6 py-3.5 text-left font-sans font-extrabold text-sm text-black border-r border-slate-200 sticky left-0 bg-white z-30">Grand Total</td>
-                            <td className="px-4 py-3.5 border-r border-slate-200 text-black">{validSummaryData.totals.other > 0 ? validSummaryData.totals.other : "0"}</td>
                             <td className="px-6 py-3.5 border-r border-slate-200 text-rose-300">{validSummaryData.totals.invalid}</td>
                             <td className="px-6 py-3.5 border-r border-slate-200 text-black">{validSummaryData.totals.na}</td>
                             <td className="px-6 py-3.5 border-r border-slate-200 text-[#cc2727] font-extrabold">{validSummaryData.totals.valid}</td>
@@ -1806,7 +1835,7 @@ export default function AdminDashboard() {
 
                 {/* 5. Appointment Month Summary */}
                 <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-                  <div className="p-3.5 border-b border-slate-200 flex items-center justify-between gap-3 bg-white">
+                  <div className="p-3.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-white">
                     <div className="flex items-center gap-2.5">
                       <div className="w-2 h-2 rounded-full bg-[#cc2727] animate-pulse" />
                       <h2 className="text-sm font-bold text-black tracking-wide">
@@ -1815,6 +1844,21 @@ export default function AdminDashboard() {
                       <span className="text-xs text-gray-500 italic hidden sm:inline">
                         — Month-wise Appointment Count & Collections
                       </span>
+                    </div>
+                    {/* Inline Filter: Location */}
+                    <div className="flex items-center gap-2 bg-slate-100/90 border border-slate-300 rounded-xl px-2.5 py-1 text-xs">
+                      <MapPin className="w-3.5 h-3.5 text-[#cc2727] shrink-0" />
+                      <span className="text-gray-500 text-[11px] font-medium hidden md:inline">Location:</span>
+                      <select
+                        value={selectedLocation}
+                        onChange={(e) => setSelectedLocation(e.target.value)}
+                        className="bg-transparent text-black font-medium focus:outline-none cursor-pointer text-xs"
+                      >
+                        <option value="All" className="bg-white text-black">All Locations</option>
+                        {distinctLocations.map((loc) => (
+                          <option key={loc} value={loc} className="bg-white text-black">{loc}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                   {appointmentMonthData.rows.length === 0 ? (

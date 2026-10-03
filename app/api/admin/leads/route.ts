@@ -158,7 +158,7 @@ export async function POST(req: Request) {
       dateOfLead: finalDate || currentTimestamp,
       alternateNumber: (alternateNumber || "").trim(),
       callerName: (callerName || "").trim(),
-      patientName: (patientName || "").trim(),
+      patientName: (patientName || "").trim() || "NA",
       patientAge: (patientAge || "").trim(),
       spouseName: (spouseName || "").trim(),
       spouseAge: (spouseAge || "").trim(),

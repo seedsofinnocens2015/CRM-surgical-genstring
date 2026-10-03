@@ -25,6 +25,7 @@ import {
   getTodayDDMMMYY,
   getCurrentMonthMMMYY,
   getFormattedTimestamp,
+  notifyLeadUpdated,
 } from "@/lib/leadOptions";
 import { IFormField } from "@/models/FormConfig";
 import { DEFAULT_FORM_FIELDS } from "@/lib/defaultFormFields";
@@ -71,7 +72,7 @@ export default function AddLeadModal({
     mobileNumber: "",
     alternateNumber: "",
     callerName: caller,
-    patientName: "",
+    patientName: "NA",
     patientAge: "",
     spouseName: "",
     spouseAge: "",
@@ -461,6 +462,7 @@ export default function AddLeadModal({
 
       const payload = {
         ...formData,
+        patientName: formData.patientName?.trim() || "NA",
         leadTimestamp,
         location: finalLocation,
         otherCity: selectedLocationOption === "Other" ? finalLocation : "",
@@ -481,6 +483,7 @@ export default function AddLeadModal({
       }
 
       onLeadAdded(data.lead);
+      notifyLeadUpdated();
       // Immediately reset all form fields
       setFormData(getInitialFormData());
       setSelectedLocationOption("");

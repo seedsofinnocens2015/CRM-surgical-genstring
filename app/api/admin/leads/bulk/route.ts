@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import jwt from "jsonwebtoken";
 import { connectDB } from "@/lib/mongodb";
 import { Lead } from "@/models/Lead";
+import { User } from "@/models/User";
 import {
   getFormattedTimestamp,
   getTodayDDMMMYY,
@@ -145,6 +146,15 @@ export async function POST(req: Request) {
       }
     }
 
+    // Fetch valid agent member names from database
+    const activeMembers = await User.find({ status: { $ne: "inactive" } }, { name: 1 }).lean();
+    const validCallerNamesMap = new Map<string, string>();
+    for (const m of activeMembers) {
+      if (m.name && m.name.trim()) {
+        validCallerNamesMap.set(m.name.trim().toLowerCase(), m.name.trim());
+      }
+    }
+
     const defaultDate = getTodayDDMMMYY();
     const defaultMonth = getCurrentMonthMMMYY();
     const currentTimestamp = getFormattedTimestamp(new Date());
@@ -206,6 +216,15 @@ export async function POST(req: Request) {
       if (!finalMonth) finalMonth = monthFromDDMMMYYServer(finalDate) || defaultMonth;
       if (!finalTimestamp) finalTimestamp = currentTimestamp;
 
+      let rawCaller = String(item.callerName || "").trim();
+      let sanitizedCaller = "";
+      if (rawCaller && rawCaller.toUpperCase() !== "NA") {
+        const matchedName = validCallerNamesMap.get(rawCaller.toLowerCase());
+        if (matchedName) {
+          sanitizedCaller = matchedName;
+        }
+      }
+
       return {
         uniqueId: assignedId,
         date: finalDate,
@@ -214,7 +233,7 @@ export async function POST(req: Request) {
         mobileNumber: mobile,
         phoneNumber: mobile, // legacy alias
         alternateNumber: String(item.alternateNumber || "").trim(),
-        callerName: String(item.callerName || "").trim(),
+        callerName: sanitizedCaller,
         patientName: String(item.patientName || "").trim(),
         patientAge: String(item.patientAge || "").trim(),
         spouseName: String(item.spouseName || "").trim(),

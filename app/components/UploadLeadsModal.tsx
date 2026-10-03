@@ -13,7 +13,7 @@ import {
   Users,
 } from "lucide-react";
 import * as XLSX from "xlsx";
-import { getMonthFromDate } from "@/lib/leadOptions";
+import { getMonthFromDate, notifyLeadUpdated } from "@/lib/leadOptions";
 
 interface UploadLeadsModalProps {
   isOpen: boolean;
@@ -395,7 +395,18 @@ export default function UploadLeadsModal({
         };
       });
 
-      setParsedLeads(mapped);
+      // Filter out completely blank rows or rows with no mobile number and no patient name
+      const validLeads = mapped.filter((l) => {
+        const hasMobile = !!(l.mobileNumber && l.mobileNumber.trim().length >= 10);
+        const hasName = !!(l.patientName && l.patientName.trim().length > 0);
+        return hasMobile || hasName;
+      });
+
+      if (validLeads.length === 0) {
+        throw new Error("No valid lead rows found in the sheet (all rows were empty or missing mobile numbers).");
+      }
+
+      setParsedLeads(validLeads);
     } catch (err: any) {
       console.error(err);
       setError("Failed to parse file: " + (err.message || "Invalid file format"));
@@ -472,6 +483,7 @@ export default function UploadLeadsModal({
       }
 
       onLeadsImported(data.leads || [], data.nextUniqueId || "", data.deletedCount || 0);
+      notifyLeadUpdated();
       handleClose();
     } catch (err: any) {
       setError(err.message || "Failed to import leads");
