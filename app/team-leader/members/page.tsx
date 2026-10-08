@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -12,6 +12,7 @@ import {
   CheckCircle,
 } from "lucide-react";
 import TeamLeaderSidebar from "@/app/components/TeamLeaderSidebar";
+import Footer from "@/app/components/Footer";
 import AddMemberModal from "@/app/components/AddMemberModal";
 
 export default function TeamLeaderMembersPage() {
@@ -154,7 +155,7 @@ export default function TeamLeaderMembersPage() {
           </button>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 max-w-7xl">
+        <main className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 w-full">
           {/* Toast Notification */}
           {toastMessage && (
             <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center gap-3 animate-in fade-in slide-in-from-top-2 font-medium">
@@ -356,6 +357,7 @@ export default function TeamLeaderMembersPage() {
             )}
           </div>
         </main>
+        <Footer />
       </div>
 
       {/* Add Member Modal locked to Agent only */}

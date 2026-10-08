@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { User, Eye, EyeOff, AlertCircle } from "lucide-react";
+import Footer from "@/app/components/Footer";
 
 function AgentLoginForm() {
   const router = useRouter();
@@ -145,30 +146,33 @@ function AgentLoginForm() {
 
 export default function AgentLoginPage() {
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-[#cc2727]/10 text-[#cc2727] border border-[#cc2727]/20 mb-4 shadow-md shadow-[#cc2727]/10">
-          <User className="w-8 h-8" />
+    <div className="min-h-screen bg-slate-50 flex flex-col justify-between pt-12">
+      <div className="flex-1 flex flex-col justify-center py-6 sm:px-6 lg:px-8">
+        <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-[#cc2727]/10 text-[#cc2727] border border-[#cc2727]/20 mb-4 shadow-md shadow-[#cc2727]/10">
+            <User className="w-8 h-8" />
+          </div>
+          <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">
+            Agent Portal
+          </h2>
+          <p className="mt-2 text-sm text-slate-600">
+            Sign in to access your Agent calling & workspace dashboard
+          </p>
         </div>
-        <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">
-          Agent Portal
-        </h2>
-        <p className="mt-2 text-sm text-slate-600">
-          Sign in to access your Agent calling & workspace dashboard
-        </p>
-      </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <Suspense
-          fallback={
-            <div className="bg-white border border-slate-200 p-8 rounded-2xl text-center text-slate-600 shadow-md">
-              Loading...
-            </div>
-          }
-        >
-          <AgentLoginForm />
-        </Suspense>
+        <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+          <Suspense
+            fallback={
+              <div className="bg-white border border-slate-200 p-8 rounded-2xl text-center text-slate-600 shadow-md">
+                Loading...
+              </div>
+            }
+          >
+            <AgentLoginForm />
+          </Suspense>
+        </div>
       </div>
+      <Footer />
     </div>
   );
 }

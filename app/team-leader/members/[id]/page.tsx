@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
@@ -31,6 +31,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import TeamLeaderSidebar from "@/app/components/TeamLeaderSidebar";
+import Footer from "@/app/components/Footer";
 import BulkAssignModal from "@/app/components/BulkAssignModal";
 import {
   getTodayDDMMMYY,
@@ -1219,6 +1220,7 @@ function getTodayISODate(): string {
             </div>
           </form>
         </main>
+        <Footer />
       </div>
 
       {/* Bulk Assign Modal (Agents) */}

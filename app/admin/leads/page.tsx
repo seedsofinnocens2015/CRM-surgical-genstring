@@ -32,6 +32,7 @@ import {
   Upload,
 } from "lucide-react";
 import AdminSidebar from "@/app/components/AdminSidebar";
+import Footer from "@/app/components/Footer";
 import AddLeadModal from "@/app/components/AddLeadModal";
 import UploadLeadsModal from "@/app/components/UploadLeadsModal";
 import {
@@ -1842,6 +1843,7 @@ export default function AdminLeadsPage() {
             )}
           </div>
         </main>
+        <Footer />
       </div>
 
       {/* Add Lead Modal */}

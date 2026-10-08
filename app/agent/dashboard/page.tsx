@@ -1,9 +1,10 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import AgentSidebar from "@/app/components/AgentSidebar";
+import Footer from "@/app/components/Footer";
 import {
   FolderKanban,
   CalendarCheck,
@@ -1026,6 +1027,7 @@ export default function AgentDashboard() {
             </Link>
           </div>
         </main>
+        <Footer />
       </div>
     </div>
   );

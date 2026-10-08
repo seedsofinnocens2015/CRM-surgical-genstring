@@ -31,6 +31,7 @@ import {
   Share2,
 } from "lucide-react";
 import AdminSidebar from "@/app/components/AdminSidebar";
+import Footer from "@/app/components/Footer";
 import { getMonthFromDate } from "@/lib/leadOptions";
 import * as XLSX from "xlsx";
 
@@ -1436,7 +1437,7 @@ export default function AdminDashboard() {
         </header>
 
         {/* Dashboard Body */}
-        <main className="flex-1 flex flex-col p-4 sm:p-6 space-y-4 overflow-hidden min-h-0">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 min-h-0">
           {/* KPI Metrics Row */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 shrink-0">
             {/* Total Leads */}
@@ -1513,7 +1514,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* Consolidated 10 Reports Stack */}
-          <div className="flex-1 overflow-y-auto min-h-0 space-y-6 bg-slate-50 rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-sm">
+          <div className="space-y-6">
             {/* 1. Lead Summary FTD */}
                 <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
                   <div className="p-3.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-white">
@@ -1545,7 +1546,7 @@ export default function AdminDashboard() {
                   {ftdData.rows.length === 0 ? (
                     <div className="p-8 text-center text-xs text-gray-600">No lead records found for FTD</div>
                   ) : (
-                    <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
+                    <div className="overflow-x-auto">
                       <table className="w-full text-center text-xs text-black border-collapse select-none whitespace-nowrap">
                         <thead className="sticky top-0 z-20 shadow-md">
                           <tr className="bg-white text-black text-xs font-semibold border-b border-slate-200">
@@ -1615,7 +1616,7 @@ export default function AdminDashboard() {
                   {mtdData.rows.length === 0 ? (
                     <div className="p-8 text-center text-xs text-gray-600">No monthly records found</div>
                   ) : (
-                    <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
+                    <div className="overflow-x-auto">
                       <table className="w-full text-center text-xs text-black border-collapse select-none whitespace-nowrap">
                         <thead className="sticky top-0 z-20 shadow-md">
                           <tr className="bg-white text-black text-xs font-semibold border-b border-slate-200">
@@ -1685,7 +1686,7 @@ export default function AdminDashboard() {
                   {validSummaryData.rows.length === 0 ? (
                     <div className="p-8 text-center text-xs text-gray-600">No valid status records found</div>
                   ) : (
-                    <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
+                    <div className="overflow-x-auto">
                       <table className="w-full text-center text-xs text-black border-collapse select-none whitespace-nowrap">
                         <thead className="sticky top-0 z-20 shadow-md">
                           <tr className="bg-white text-black text-xs font-semibold border-b border-slate-200">
@@ -1781,7 +1782,7 @@ export default function AdminDashboard() {
                   {appointmentDateData.rows.length === 0 ? (
                     <div className="p-8 text-center text-xs text-gray-600">No appointment date records found</div>
                   ) : (
-                    <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
+                    <div className="overflow-x-auto">
                       <table className="w-full text-center text-xs text-black border-collapse select-none whitespace-nowrap">
                         <thead className="sticky top-0 z-20 shadow-md">
                           <tr className="border-b border-slate-300 font-bold text-xs bg-white">
@@ -1864,7 +1865,7 @@ export default function AdminDashboard() {
                   {appointmentMonthData.rows.length === 0 ? (
                     <div className="p-8 text-center text-xs text-gray-600">No appointment records found</div>
                   ) : (
-                    <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
+                    <div className="overflow-x-auto">
                       <table className="w-full text-center text-xs text-black border-collapse select-none whitespace-nowrap">
                         <thead className="sticky top-0 z-20 shadow-md">
                           <tr className="border-b border-slate-300 font-bold text-xs bg-white">
@@ -1953,7 +1954,7 @@ export default function AdminDashboard() {
                   {surgeryDateData.rows.length === 0 ? (
                     <div className="p-8 text-center text-xs text-gray-600">No surgery date records found</div>
                   ) : (
-                    <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
+                    <div className="overflow-x-auto">
                       <table className="w-full text-center text-xs text-black border-collapse select-none whitespace-nowrap">
                         <thead className="sticky top-0 z-20 shadow-md">
                           <tr className="border-b border-slate-300 font-bold text-xs bg-white">
@@ -2036,7 +2037,7 @@ export default function AdminDashboard() {
                   {surgeryMonthData.rows.length === 0 ? (
                     <div className="p-8 text-center text-xs text-gray-600">No surgery records found</div>
                   ) : (
-                    <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
+                    <div className="overflow-x-auto">
                       <table className="w-full text-center text-xs text-black border-collapse select-none whitespace-nowrap">
                         <thead className="sticky top-0 z-20 shadow-md">
                           <tr className="border-b border-slate-300 font-bold text-xs bg-white">
@@ -2108,7 +2109,7 @@ export default function AdminDashboard() {
                   {callSummaryData.rows.length === 0 ? (
                     <div className="p-8 text-center text-xs text-gray-600">No call summary records found</div>
                   ) : (
-                    <div className="overflow-x-auto max-h-[380px] overflow-y-auto">
+                    <div className="overflow-x-auto">
                       <table className="w-full text-center text-xs text-black border-collapse select-none whitespace-nowrap">
                         <thead className="sticky top-0 z-20 shadow-md">
                           <tr className="border-b border-slate-300 font-bold text-xs bg-[#5c768d] text-black">
@@ -2193,7 +2194,7 @@ export default function AdminDashboard() {
                   {subDispData.groups.length === 0 ? (
                     <div className="p-8 text-center text-xs text-gray-600">No sub-disposition records found</div>
                   ) : (
-                    <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+                    <div className="overflow-x-auto">
                       <table className="w-full text-center text-xs text-black border-collapse select-none whitespace-nowrap">
                         <thead className="sticky top-0 z-20 shadow-md">
                           <tr className="bg-white text-black text-xs font-semibold border-b border-slate-200">
@@ -2311,7 +2312,7 @@ export default function AdminDashboard() {
                   {leadSourceData.groups.length === 0 ? (
                     <div className="p-8 text-center text-xs text-gray-600">No Lead Source records found</div>
                   ) : (
-                    <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+                    <div className="overflow-x-auto">
                       <table className="w-full text-xs text-black border-collapse select-none whitespace-nowrap">
                         <thead className="sticky top-0 z-20 shadow-md">
                           <tr className="border-b border-slate-300 font-bold text-xs bg-white">
@@ -2382,6 +2383,7 @@ export default function AdminDashboard() {
                 </div>
               </div>
         </main>
+        <Footer />
       </div>
     </div>
   );

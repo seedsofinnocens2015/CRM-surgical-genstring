@@ -29,6 +29,7 @@ import {
   Eye,
 } from "lucide-react";
 import MISSidebar from "@/app/components/MISSidebar";
+import Footer from "@/app/components/Footer";
 import {
   LOCATIONS,
   TREATMENTS,
@@ -1729,6 +1730,7 @@ export default function MISLeadsPage() {
             )}
           </div>
         </main>
+        <Footer />
       </div>
 
       {/* Download Modal Popup */}

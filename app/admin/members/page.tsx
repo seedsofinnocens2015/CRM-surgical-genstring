@@ -16,6 +16,7 @@ import {
   Megaphone,
 } from "lucide-react";
 import AdminSidebar from "@/app/components/AdminSidebar";
+import Footer from "@/app/components/Footer";
 import AddMemberModal from "@/app/components/AddMemberModal";
 
 export default function AdminMembersPage() {
@@ -157,7 +158,7 @@ export default function AdminMembersPage() {
           </button>
         </header>
 
-        <main className="p-6 sm:p-8 space-y-6 max-w-7xl">
+        <main className="p-6 sm:p-8 space-y-6 w-full">
           {/* Toast Notification */}
           {toastMessage && (
             <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center gap-3 animate-in fade-in slide-in-from-top-2 font-medium">
@@ -464,6 +465,7 @@ export default function AdminMembersPage() {
             )}
           </div>
         </main>
+        <Footer />
       </div>
 
       {/* Add Member Modal */}

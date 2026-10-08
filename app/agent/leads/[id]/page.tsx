@@ -21,6 +21,7 @@ import {
   Lock,
 } from "lucide-react";
 import AgentSidebar from "@/app/components/AgentSidebar";
+import Footer from "@/app/components/Footer";
 import LeadAuditHistory, { AuditLog } from "@/app/components/LeadAuditHistory";
 import NotesHistory, { NoteHistoryItem } from "@/app/components/NotesHistory";
 import {
@@ -1418,7 +1419,8 @@ export default function AgentLeadDetailPage({
         </div>
       </div>
     </main>
-      </div>
-    </div>
+    <Footer />
+  </div>
+</div>
   );
 }

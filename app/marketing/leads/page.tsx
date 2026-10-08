@@ -32,6 +32,7 @@ import {
   Upload,
 } from "lucide-react";
 import MarketingSidebar from "@/app/components/MarketingSidebar";
+import Footer from "@/app/components/Footer";
 import AddLeadModal from "@/app/components/AddLeadModal";
 import UploadLeadsModal from "@/app/components/UploadLeadsModal";
 import {
@@ -1829,6 +1830,7 @@ export default function MarketingLeadsPage() {
             )}
           </div>
         </main>
+        <Footer />
       </div>
 
       {/* Add Lead Modal */}

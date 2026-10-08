@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Megaphone, Eye, EyeOff, AlertCircle } from "lucide-react";
+import Footer from "@/app/components/Footer";
 
 function MarketingLoginForm() {
   const router = useRouter();
@@ -115,33 +116,36 @@ function MarketingLoginForm() {
 
 export default function MarketingLoginPage() {
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-violet-50 text-violet-700 border border-violet-200 mb-4 shadow-md shadow-violet-600/10">
-          <Megaphone className="w-8 h-8" />
+    <div className="min-h-screen bg-slate-50 flex flex-col justify-between pt-12">
+      <div className="flex-1 flex flex-col justify-center py-6 sm:px-6 lg:px-8">
+        <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-violet-50 text-violet-700 border border-violet-200 mb-4 shadow-md shadow-violet-600/10">
+            <Megaphone className="w-8 h-8" />
+          </div>
+          <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">
+            Marketing Portal
+          </h2>
+          <p className="mt-2 text-sm text-slate-600">
+            Campaign Lead Generation, Upload &amp; Management Portal
+          </p>
         </div>
-        <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">
-          Marketing Portal
-        </h2>
-        <p className="mt-2 text-sm text-slate-600">
-          Campaign Lead Generation, Upload &amp; Management Portal
-        </p>
-      </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <Suspense fallback={<div className="text-center py-12 text-slate-400">Loading...</div>}>
-          <MarketingLoginForm />
-        </Suspense>
+        <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+          <Suspense fallback={<div className="text-center py-12 text-slate-400">Loading...</div>}>
+            <MarketingLoginForm />
+          </Suspense>
 
-        <div className="text-center mt-6">
-          <Link
-            href="/"
-            className="text-xs text-slate-500 hover:text-slate-800 transition-colors"
-          >
-            ← Back to Portal Home
-          </Link>
+          <div className="text-center mt-6">
+            <Link
+              href="/"
+              className="text-xs text-slate-500 hover:text-slate-800 transition-colors"
+            >
+              ← Back to Portal Home
+            </Link>
+          </div>
         </div>
       </div>
+      <Footer />
     </div>
   );
 }

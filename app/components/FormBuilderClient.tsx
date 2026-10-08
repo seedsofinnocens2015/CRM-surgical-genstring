@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import AdminSidebar from "@/app/components/AdminSidebar";
 import TeamLeaderSidebar from "@/app/components/TeamLeaderSidebar";
+import Footer from "@/app/components/Footer";
 import { IFormField } from "@/models/FormConfig";
 import {
   GripVertical,
@@ -790,6 +791,7 @@ export default function FormBuilderClient({ role }: FormBuilderClientProps) {
             </button>
           </div>
         </main>
+        <Footer />
       </div>
 
       {/* Edit / Add Field Modal */}

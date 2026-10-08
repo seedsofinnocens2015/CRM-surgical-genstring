@@ -1,9 +1,10 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import TeamLeaderSidebar from "@/app/components/TeamLeaderSidebar";
+import Footer from "@/app/components/Footer";
 import {
   FolderKanban,
   CheckCircle2,
@@ -513,6 +514,7 @@ export default function TeamLeaderDashboard() {
             </div>
           </div>
         </main>
+        <Footer />
       </div>
     </div>
   );

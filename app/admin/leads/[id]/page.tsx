@@ -20,6 +20,7 @@ import {
   Clock,
 } from "lucide-react";
 import AdminSidebar from "@/app/components/AdminSidebar";
+import Footer from "@/app/components/Footer";
 import LeadAuditHistory, { AuditLog } from "@/app/components/LeadAuditHistory";
 import NotesHistory, { NoteHistoryItem } from "@/app/components/NotesHistory";
 import {
@@ -1304,6 +1305,7 @@ export default function LeadDetailPage({
             </div>
           </div>
         </main>
+        <Footer />
       </div>
 
       {/* Delete Confirmation Modal */}

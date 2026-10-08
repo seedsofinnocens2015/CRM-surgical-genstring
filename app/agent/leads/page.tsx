@@ -29,6 +29,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import AgentSidebar from "@/app/components/AgentSidebar";
+import Footer from "@/app/components/Footer";
 import AddLeadModal from "@/app/components/AddLeadModal";
 import {
   LOCATIONS,
@@ -1696,6 +1697,7 @@ export default function AgentLeadsPage() {
             )}
           </div>
         </main>
+        <Footer />
       </div>
 
       {/* Add Lead Modal */}

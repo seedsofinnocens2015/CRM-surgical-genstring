@@ -34,6 +34,7 @@ import {
   Megaphone,
 } from "lucide-react";
 import AdminSidebar from "@/app/components/AdminSidebar";
+import Footer from "@/app/components/Footer";
 import BulkAssignModal from "@/app/components/BulkAssignModal";
 import {
   getTodayDDMMMYY,
@@ -1371,6 +1372,7 @@ function getTodayISODate(): string {
             </div>
           </form>
         </main>
+        <Footer />
       </div>
 
       {/* Delete Confirmation Modal */}

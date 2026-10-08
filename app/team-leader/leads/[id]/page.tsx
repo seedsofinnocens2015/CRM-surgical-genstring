@@ -20,6 +20,7 @@ import {
   Clock,
 } from "lucide-react";
 import TeamLeaderSidebar from "@/app/components/TeamLeaderSidebar";
+import Footer from "@/app/components/Footer";
 import LeadAuditHistory, { AuditLog } from "@/app/components/LeadAuditHistory";
 import NotesHistory, { NoteHistoryItem } from "@/app/components/NotesHistory";
 import {
@@ -1295,7 +1296,8 @@ export default function TeamLeaderLeadDetailPage({
         </div>
       </div>
     </main>
-      </div>
-    </div>
+    <Footer />
+  </div>
+</div>
   );
 }

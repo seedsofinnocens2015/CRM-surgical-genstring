@@ -19,6 +19,7 @@ import {
   Eye,
 } from "lucide-react";
 import MarketingSidebar from "@/app/components/MarketingSidebar";
+import Footer from "@/app/components/Footer";
 import LeadAuditHistory, { AuditLog } from "@/app/components/LeadAuditHistory";
 import NotesHistory, { NoteHistoryItem } from "@/app/components/NotesHistory";
 import {
@@ -1259,6 +1260,7 @@ export default function LeadDetailPage({
             </div>
           </div>
         </main>
+        <Footer />
       </div>
     </div>
   );

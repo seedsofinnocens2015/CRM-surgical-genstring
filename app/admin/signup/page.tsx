@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ShieldAlert, CheckCircle2, AlertCircle } from "lucide-react";
+import Footer from "@/app/components/Footer";
 
 export default function AdminSignupPage() {
   const router = useRouter();
@@ -64,8 +65,9 @@ export default function AdminSignupPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
+    <div className="min-h-screen bg-slate-50 flex flex-col justify-between pt-12">
+      <div className="flex-1 flex flex-col justify-center py-6 sm:px-6 lg:px-8">
+        <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
         <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-[#cc2727]/10 text-[#cc2727] border border-[#cc2727]/20 mb-4 shadow-md shadow-[#cc2727]/10">
           <ShieldAlert className="w-8 h-8" />
         </div>
@@ -196,5 +198,7 @@ export default function AdminSignupPage() {
         </div>
       </div>
     </div>
-  );
+    <Footer />
+  </div>
+);
 }
