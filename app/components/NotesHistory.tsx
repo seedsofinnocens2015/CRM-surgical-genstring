@@ -109,8 +109,8 @@ export default function NotesHistory({
             <p className="text-xs font-bold text-black">
               No notes recorded yet
             </p>
-            <p className="text-[11px] text-gray-600 mt-1 max-w-[220px] mx-auto">
-              Jab bhi koi member is lead me Notes & Observations add karke save karega, unki complete history yahan show hogi.
+            <p className="text-[11px] text-gray-600 mt-1 max-w-[240px] mx-auto">
+              Whenever a team member logs or updates Notes &amp; Observations on this lead, the complete entry history will appear here.
             </p>
           </div>
         ) : (

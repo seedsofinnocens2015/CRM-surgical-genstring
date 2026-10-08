@@ -1014,7 +1014,7 @@ export default function AgentDashboard() {
                 Manage all your assigned leads in real-time
               </h3>
               <p className="text-xs text-gray-500 max-w-xl">
-                Aapke paas total {overallMetrics.totalAssigned} assigned leads hain. Patient calls karke call dispositions update karein aur dates schedule karein.
+                You have {overallMetrics.totalAssigned} total assigned leads. Log your patient calls, update dispositions, and schedule appointments or follow-ups.
               </p>
             </div>
 

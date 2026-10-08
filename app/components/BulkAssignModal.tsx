@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState, useMemo } from "react";
 import {
@@ -214,7 +214,7 @@ export default function BulkAssignModal({
                 </span>
               </h2>
               <p className="text-xs text-gray-600 mt-0.5">
-                Sirf unassigned leads pool yahan dikhega. Assign hone ke baad ye leads kisi doosre member ko nahi dikhengi.
+                Displays the unassigned leads pool. Once assigned, these leads will belong to this team member.
               </p>
             </div>
           </div>
@@ -320,7 +320,7 @@ export default function BulkAssignModal({
               </div>
               <p className="text-sm font-bold text-black">No unassigned leads found</p>
               <p className="text-xs text-gray-600 max-w-sm mx-auto">
-                Sabhi leads already kisi na kisi member ko assign ho chuki hain ya aapke filter criteria se match nahi karti.
+                All leads have already been assigned to team members or no leads match your filter criteria.
               </p>
             </div>
           ) : (

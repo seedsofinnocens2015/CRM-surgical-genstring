@@ -701,38 +701,31 @@ export default function AdminDashboard() {
     }
 
     sourceLeads.forEach((lead) => {
+      const d = (lead.surgeryDate || "").trim();
+      // Only include if surgeryDate is present and not blank (same as Surgery Date Summary FTD)
+      if (!d) return;
+
       const payment = parseCurrencyNumber(lead.surgeryPaymentReceived);
-      const cost = parseCurrencyNumber(lead.surgeryCost);
-      const hasSurgery =
-        !!lead.surgeryDate ||
-        !!lead.surgeryMonth ||
-        payment > 0 ||
-        cost > 0;
 
-      if (hasSurgery) {
-        let m = (lead.surgeryMonth || "").trim();
-        if (!m && lead.surgeryDate) {
-          m = getMonthFromDate(lead.surgeryDate);
-        }
-        if (!m && lead.month) {
-          m = lead.month.trim();
-        }
-        const monthKey = m || "Unknown";
-
-        if (!monthMap[monthKey]) {
-          monthMap[monthKey] = {
-            month: monthKey,
-            monthSortKey: parseMonthToSortKey(monthKey),
-            count: 0,
-            paymentReceived: 0,
-          };
-        }
-
-        monthMap[monthKey].count += 1;
-        monthMap[monthKey].paymentReceived += payment;
-        totalCount += 1;
-        totalPaymentReceived += payment;
+      let m = (lead.surgeryMonth || "").trim();
+      if (!m) {
+        m = getMonthFromDate(d);
       }
+      const monthKey = m || "Unknown";
+
+      if (!monthMap[monthKey]) {
+        monthMap[monthKey] = {
+          month: monthKey,
+          monthSortKey: parseMonthToSortKey(monthKey),
+          count: 0,
+          paymentReceived: 0,
+        };
+      }
+
+      monthMap[monthKey].count += 1;
+      monthMap[monthKey].paymentReceived += payment;
+      totalCount += 1;
+      totalPaymentReceived += payment;
     });
 
     const rows = Object.values(monthMap).sort((a, b) => a.monthSortKey - b.monthSortKey);
@@ -892,9 +885,9 @@ export default function AdminDashboard() {
         totalConsultationCharges += consultFee;
       }
 
-      // 5. Surgery count & collections
+      // 5. Surgery count & collections (strictly when surgeryDate is present)
       const surgPay = parseCurrencyNumber(lead.surgeryPaymentReceived);
-      const hasSurgery = !!lead.surgeryDate || !!lead.surgeryMonth || surgPay > 0;
+      const hasSurgery = !!(lead.surgeryDate && lead.surgeryDate.trim());
       if (hasSurgery) {
         monthMap[monthKey].surgeryCount += 1;
         totalSurgeryCount += 1;
@@ -1546,7 +1539,7 @@ export default function AdminDashboard() {
                   {ftdData.rows.length === 0 ? (
                     <div className="p-8 text-center text-xs text-gray-600">No lead records found for FTD</div>
                   ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
                       <table className="w-full text-center text-xs text-black border-collapse select-none whitespace-nowrap">
                         <thead className="sticky top-0 z-20 shadow-md">
                           <tr className="bg-white text-black text-xs font-semibold border-b border-slate-200">
@@ -1616,7 +1609,7 @@ export default function AdminDashboard() {
                   {mtdData.rows.length === 0 ? (
                     <div className="p-8 text-center text-xs text-gray-600">No monthly records found</div>
                   ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
                       <table className="w-full text-center text-xs text-black border-collapse select-none whitespace-nowrap">
                         <thead className="sticky top-0 z-20 shadow-md">
                           <tr className="bg-white text-black text-xs font-semibold border-b border-slate-200">
@@ -1686,7 +1679,7 @@ export default function AdminDashboard() {
                   {validSummaryData.rows.length === 0 ? (
                     <div className="p-8 text-center text-xs text-gray-600">No valid status records found</div>
                   ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
                       <table className="w-full text-center text-xs text-black border-collapse select-none whitespace-nowrap">
                         <thead className="sticky top-0 z-20 shadow-md">
                           <tr className="bg-white text-black text-xs font-semibold border-b border-slate-200">
@@ -1782,7 +1775,7 @@ export default function AdminDashboard() {
                   {appointmentDateData.rows.length === 0 ? (
                     <div className="p-8 text-center text-xs text-gray-600">No appointment date records found</div>
                   ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
                       <table className="w-full text-center text-xs text-black border-collapse select-none whitespace-nowrap">
                         <thead className="sticky top-0 z-20 shadow-md">
                           <tr className="border-b border-slate-300 font-bold text-xs bg-white">
@@ -1865,7 +1858,7 @@ export default function AdminDashboard() {
                   {appointmentMonthData.rows.length === 0 ? (
                     <div className="p-8 text-center text-xs text-gray-600">No appointment records found</div>
                   ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
                       <table className="w-full text-center text-xs text-black border-collapse select-none whitespace-nowrap">
                         <thead className="sticky top-0 z-20 shadow-md">
                           <tr className="border-b border-slate-300 font-bold text-xs bg-white">
@@ -1954,7 +1947,7 @@ export default function AdminDashboard() {
                   {surgeryDateData.rows.length === 0 ? (
                     <div className="p-8 text-center text-xs text-gray-600">No surgery date records found</div>
                   ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
                       <table className="w-full text-center text-xs text-black border-collapse select-none whitespace-nowrap">
                         <thead className="sticky top-0 z-20 shadow-md">
                           <tr className="border-b border-slate-300 font-bold text-xs bg-white">
@@ -2037,7 +2030,7 @@ export default function AdminDashboard() {
                   {surgeryMonthData.rows.length === 0 ? (
                     <div className="p-8 text-center text-xs text-gray-600">No surgery records found</div>
                   ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
                       <table className="w-full text-center text-xs text-black border-collapse select-none whitespace-nowrap">
                         <thead className="sticky top-0 z-20 shadow-md">
                           <tr className="border-b border-slate-300 font-bold text-xs bg-white">
@@ -2109,7 +2102,7 @@ export default function AdminDashboard() {
                   {callSummaryData.rows.length === 0 ? (
                     <div className="p-8 text-center text-xs text-gray-600">No call summary records found</div>
                   ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
                       <table className="w-full text-center text-xs text-black border-collapse select-none whitespace-nowrap">
                         <thead className="sticky top-0 z-20 shadow-md">
                           <tr className="border-b border-slate-300 font-bold text-xs bg-[#5c768d] text-black">
@@ -2194,7 +2187,7 @@ export default function AdminDashboard() {
                   {subDispData.groups.length === 0 ? (
                     <div className="p-8 text-center text-xs text-gray-600">No sub-disposition records found</div>
                   ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
                       <table className="w-full text-center text-xs text-black border-collapse select-none whitespace-nowrap">
                         <thead className="sticky top-0 z-20 shadow-md">
                           <tr className="bg-white text-black text-xs font-semibold border-b border-slate-200">
@@ -2312,7 +2305,7 @@ export default function AdminDashboard() {
                   {leadSourceData.groups.length === 0 ? (
                     <div className="p-8 text-center text-xs text-gray-600">No Lead Source records found</div>
                   ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
                       <table className="w-full text-xs text-black border-collapse select-none whitespace-nowrap">
                         <thead className="sticky top-0 z-20 shadow-md">
                           <tr className="border-b border-slate-300 font-bold text-xs bg-white">

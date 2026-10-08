@@ -27,6 +27,8 @@ import {
   ChevronDown,
   Sliders,
   RefreshCw,
+  Bell,
+  CalendarClock,
 } from "lucide-react";
 import AgentSidebar from "@/app/components/AgentSidebar";
 import Footer from "@/app/components/Footer";
@@ -468,6 +470,45 @@ export default function AgentLeadsPage() {
     return count;
   }, [filters]);
 
+  // Today's Follow-up Calculations & Notification
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }, []);
+
+  const todayFormatted = useMemo(() => {
+    const d = new Date();
+    return d.toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  }, []);
+
+  const todayFollowUps = useMemo(() => {
+    return leads.filter((lead) => {
+      const fDate = normalizeDateStr(lead.followUpDate || lead.followUpDates);
+      return fDate === todayStr;
+    });
+  }, [leads, todayStr]);
+
+  const handleShowTodayFollowUps = () => {
+    setFilters((prev) => {
+      const updated = {
+        ...prev,
+        followUpDateFrom: todayStr,
+        followUpDateTo: todayStr,
+      };
+      try {
+        localStorage.setItem("crm_leads_filters_agent", JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+  };
+
   const filteredLeads = useMemo(() => {
     return leads.filter((lead) => {
       // 1. Text Search Query
@@ -642,6 +683,32 @@ export default function AgentLeadsPage() {
           </div>
 
           <div className="flex items-center gap-2.5">
+            {/* Today's Follow-ups Quick Notification Button / Badge */}
+            <button
+              onClick={handleShowTodayFollowUps}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                todayFollowUps.length > 0
+                  ? "bg-rose-50 hover:bg-rose-100 text-[#cc2727] border-[#cc2727]/30 shadow-sm animate-pulse hover:animate-none"
+                  : "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300"
+              }`}
+              title={`View ${todayFollowUps.length} follow-up(s) scheduled for today (${todayFormatted})`}
+            >
+              <div className="relative">
+                <Bell className={`w-4 h-4 ${todayFollowUps.length > 0 ? "text-[#cc2727]" : "text-slate-500"}`} />
+                {todayFollowUps.length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#cc2727] ring-2 ring-white" />
+                )}
+              </div>
+              <span>Today's Follow-ups:</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-xs font-bold ${
+                todayFollowUps.length > 0
+                  ? "bg-[#cc2727] text-white"
+                  : "bg-slate-200 text-slate-700"
+              }`}>
+                {todayFollowUps.length}
+              </span>
+            </button>
+
             {/* Live DB Sync Indicator */}
             <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200/20 rounded-xl text-[11px] font-semibold text-emerald-700">
               <span className="w-2 h-2 rounded-full bg-[#cc2727] animate-pulse" />
@@ -663,7 +730,7 @@ export default function AgentLeadsPage() {
             {/* Add Lead Button */}
             <button
               onClick={() => setIsModalOpen(true)}
-              className="py-2 px-4 bg-[#cc2727] hover:bg-[#b02121] text-black text-xs font-semibold rounded-xl flex items-center gap-2 shadow-lg shadow-[#cc2727]/20 transition-all active:scale-95 cursor-pointer"
+              className="py-2 px-4 bg-[#cc2727] hover:bg-[#b02121] text-white text-xs font-semibold rounded-xl flex items-center gap-2 shadow-lg shadow-[#cc2727]/20 transition-all active:scale-95 cursor-pointer"
             >
               <UserPlus className="w-3.5 h-3.5" />
               <span>Add Lead</span>
@@ -680,17 +747,65 @@ export default function AgentLeadsPage() {
             </div>
           )}
 
+          {/* Today's Follow-up Notification Alert Banner */}
+          <div className={`shrink-0 p-3 sm:p-3.5 rounded-2xl border flex items-center justify-between gap-3 shadow-sm transition-all ${
+            todayFollowUps.length > 0
+              ? "bg-rose-50/80 border-[#cc2727]/30 text-slate-800"
+              : "bg-slate-50 border-slate-200 text-slate-700"
+          }`}>
+            <div className="flex items-center gap-3 min-w-0">
+              <div className={`p-2 rounded-xl shrink-0 ${
+                todayFollowUps.length > 0
+                  ? "bg-[#cc2727] text-white shadow-md shadow-[#cc2727]/20"
+                  : "bg-slate-200 text-slate-600"
+              }`}>
+                <CalendarClock className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-slate-800">
+                  <span className="font-bold text-slate-900 mr-1.5">
+                    🔔 Today&apos;s Follow-ups Reminder ({todayFormatted}):
+                  </span>
+                  {todayFollowUps.length > 0 ? (
+                    <>
+                      You have{" "}
+                      <span className="font-bold text-[#cc2727] text-sm px-1.5 py-0.5 rounded bg-rose-100 border border-rose-200 mx-0.5">
+                        {todayFollowUps.length}
+                      </span>{" "}
+                      patient follow-up(s) scheduled for today.
+                    </>
+                  ) : (
+                    <span className="text-slate-500">
+                      No follow-ups scheduled for today.
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {todayFollowUps.length > 0 && (
+              <button
+                type="button"
+                onClick={handleShowTodayFollowUps}
+                className="shrink-0 px-3 py-1.5 bg-[#cc2727] hover:bg-[#b02121] text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
+              >
+                <span>View Today&apos;s Leads</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
           {/* Important Calling Update Reminder Banner */}
-          <div className="shrink-0 p-3 sm:p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-orange-500/15 border border-amber-500/30 text-amber-200 flex items-center justify-between gap-3 shadow-md shadow-amber-950/20">
+          <div className="shrink-0 p-3 sm:p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center justify-between gap-3 shadow-sm">
             <div className="flex items-center gap-3">
-              <div className="p-1.5 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 shrink-0">
+              <div className="p-1.5 rounded-xl bg-amber-100 border border-amber-200 text-amber-700 shrink-0">
                 <AlertCircle className="w-4 h-4" />
               </div>
-              <p className="text-xs text-black">
-                <strong className="text-black font-semibold">Call Logging Reminder:</strong> You must update either <strong className="text-amber-300 font-semibold">Notes &amp; Observations</strong> or <strong className="text-amber-300 font-semibold">Sub Dispositions</strong> on each patient call, otherwise the call will not be added to your Total Calls count.
+              <p className="text-xs text-amber-950">
+                <strong className="text-amber-950 font-bold">Call Logging Reminder:</strong> You must update either <strong className="text-amber-800 font-bold">Notes &amp; Observations</strong> or <strong className="text-amber-800 font-bold">Sub Dispositions</strong> on each patient call, otherwise the call will not be added to your Total Calls count.
               </p>
             </div>
-            <span className="hidden md:inline-flex text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
+            <span className="hidden md:inline-flex text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-200 shrink-0">
               Required
             </span>
           </div>

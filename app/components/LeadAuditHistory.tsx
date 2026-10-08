@@ -119,8 +119,8 @@ export default function LeadAuditHistory({
             <p className="text-xs font-bold text-black">
               No modifications recorded yet
             </p>
-            <p className="text-[11px] text-gray-600 mt-1 max-w-[200px] mx-auto">
-              Jab bhi koi member is lead me koi field change karega, unka date, time, member name aur previous vs new value yahan live show hoga.
+            <p className="text-[11px] text-gray-600 mt-1 max-w-[240px] mx-auto">
+              Whenever a team member modifies any field in this lead, their name, date, time, and previous vs new values will appear here.
             </p>
             {leadCreatedAt && (
               <div className="mt-4 pt-3 border-t border-slate-200 inline-flex items-center gap-1.5 text-[11px] text-gray-600">

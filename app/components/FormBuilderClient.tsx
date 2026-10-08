@@ -1175,7 +1175,7 @@ export default function FormBuilderClient({ role }: FormBuilderClientProps) {
             </div>
 
             <p className="text-xs text-gray-700 font-medium">
-              Kya aap sach me <span className="font-bold text-rose-600">"{fieldToDelete.label}"</span> field ko form se delete karna chahte hain?
+              Are you sure you want to permanently delete the <span className="font-bold text-rose-600">&quot;{fieldToDelete.label}&quot;</span> field from the form?
             </p>
 
             <div className="flex items-center justify-end gap-2.5 pt-2">
