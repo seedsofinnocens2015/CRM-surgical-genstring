@@ -154,16 +154,38 @@ export default function AgentLeadsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [toastMessage, setToastMessage] = useState("");
 
-  // Advanced Filters State
+  // Advanced Filters State with localStorage persistence
   const [filters, setFilters] = useState<LeadFilters>(initialFilters);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
 
+  // Load saved filters on mount
+  useEffect(() => {
+    try {
+      const savedFilters = localStorage.getItem("crm_leads_filters_agent");
+      if (savedFilters) {
+        const parsed = JSON.parse(savedFilters);
+        setFilters((prev) => ({ ...prev, ...parsed }));
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
   const updateFilter = (key: keyof LeadFilters, value: string) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
+    setFilters((prev) => {
+      const updated = { ...prev, [key]: value };
+      try {
+        localStorage.setItem("crm_leads_filters_agent", JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
   };
 
   const handleResetFilters = () => {
     setFilters(initialFilters);
+    try {
+      localStorage.removeItem("crm_leads_filters_agent");
+    } catch (e) {}
   };
 
   // Column visibility state
@@ -177,6 +199,22 @@ export default function AgentLeadsPage() {
   const [isColumnDropdownOpen, setIsColumnDropdownOpen] = useState(false);
   const [columnSearch, setColumnSearch] = useState("");
   const columnDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Table Scroll Container Ref & Last Viewed Lead State
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const [highlightedLeadId, setHighlightedLeadId] = useState<string | null>(null);
+
+  // Save scroll position when navigating to a lead
+  const handleOpenLead = (lead: any) => {
+    const id = lead.uniqueId || lead._id;
+    try {
+      if (id) sessionStorage.setItem("crm_last_viewed_lead_agent", id);
+      if (tableScrollRef.current) {
+        sessionStorage.setItem("crm_leads_scroll_top_agent", String(tableScrollRef.current.scrollTop));
+      }
+    } catch (e) {}
+    router.push(`/agent/leads/${id}`);
+  };
 
   // Load column preferences from localStorage
   useEffect(() => {
@@ -537,6 +575,47 @@ export default function AgentLeadsPage() {
     });
   }, [leads, searchQuery, filters]);
 
+  // Restore scroll position instantly after data is loaded (clean, professional, no animated jumping)
+  useEffect(() => {
+    if (loading || filteredLeads.length === 0) return;
+
+    try {
+      const savedLeadId = sessionStorage.getItem("crm_last_viewed_lead_agent");
+      const savedScrollTop = sessionStorage.getItem("crm_leads_scroll_top_agent");
+
+      if (savedLeadId) {
+        setHighlightedLeadId(savedLeadId);
+      }
+
+      // Restore exact scroll position instantly
+      requestAnimationFrame(() => {
+        if (tableScrollRef.current) {
+          if (savedScrollTop) {
+            tableScrollRef.current.scrollTop = Number(savedScrollTop);
+          } else if (savedLeadId) {
+            const rowElem = document.getElementById(`lead-row-${savedLeadId}`);
+            if (rowElem) {
+              rowElem.scrollIntoView({ block: "nearest" });
+            }
+          }
+        }
+      });
+    } catch (e) {}
+  }, [loading, filteredLeads.length]);
+
+  // Keep saved scroll position updated on user scroll (so page refresh also remembers scroll)
+  useEffect(() => {
+    const el = tableScrollRef.current;
+    if (!el) return;
+    const handleScroll = () => {
+      try {
+        sessionStorage.setItem("crm_leads_scroll_top_agent", String(el.scrollTop));
+      } catch (e) {}
+    };
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, [loading]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -592,7 +671,7 @@ export default function AgentLeadsPage() {
           </div>
         </header>
 
-        <main className="flex-1 flex flex-col p-4 sm:p-6 space-y-4 overflow-hidden min-h-0">
+        <main className="flex-1 flex flex-col px-4 pt-4 sm:px-6 sm:pt-6 pb-0 space-y-4 overflow-hidden min-h-0">
           {/* Toast Notification */}
           {toastMessage && (
             <div className="shrink-0 p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
@@ -1143,7 +1222,7 @@ export default function AgentLeadsPage() {
           </div>
 
           {/* Leads Table Container */}
-          <div className="flex-1 flex flex-col min-h-0 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden relative">
+          <div className="flex-1 flex flex-col min-h-0 bg-white border-t border-x border-slate-200 rounded-t-2xl shadow-sm overflow-hidden relative">
             <div className="p-4 sm:p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative shrink-0 bg-white z-40">
               <div>
                 <h2 className="text-base font-bold text-black">Patient Leads</h2>
@@ -1258,7 +1337,7 @@ export default function AgentLeadsPage() {
                 </button>
               </div>
             ) : (
-              <div className="flex-1 overflow-auto min-h-0">
+              <div ref={tableScrollRef} className="flex-1 overflow-auto min-h-0">
                 <table className="w-full text-left text-xs text-black whitespace-nowrap">
                   <thead className="bg-slate-50 text-black uppercase tracking-wider border-b border-slate-200 text-[11px] sticky top-0 z-20 shadow-sm">
                     <tr>
@@ -1424,11 +1503,19 @@ export default function AgentLeadsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredLeads.map((lead) => (
+                    {filteredLeads.map((lead) => {
+                      const leadId = lead.uniqueId || lead._id;
+                      const isHighlighted = highlightedLeadId === leadId;
+                      return (
                       <tr
                         key={lead._id || lead.uniqueId}
-                        onClick={() => router.push(`/agent/leads/${lead.uniqueId || lead._id}`)}
-                        className="hover:bg-slate-100/60 cursor-pointer transition-colors group"
+                        id={`lead-row-${leadId}`}
+                        onClick={() => handleOpenLead(lead)}
+                        className={`cursor-pointer transition-colors group ${
+                          isHighlighted
+                            ? "bg-amber-100/70 hover:bg-amber-100 font-medium ring-1 ring-inset ring-amber-400"
+                            : "hover:bg-slate-100/60"
+                        }`}
                       >
                         {/* 1. Unique ID (Sticky Left) */}
                         <td className="px-4 py-3.5 sticky left-0 bg-white group-hover:bg-slate-100/90 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
@@ -1680,7 +1767,7 @@ export default function AgentLeadsPage() {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                router.push(`/agent/leads/${lead.uniqueId || lead._id}`);
+                                handleOpenLead(lead);
                               }}
                               className="px-2.5 py-1.5 rounded-lg bg-[#cc2727]/10 hover:bg-[#cc2727]/20 text-[#cc2727] hover:text-black border border-[#cc2727]/20 text-xs font-medium transition-colors flex items-center gap-1"
                             >
@@ -1690,7 +1777,8 @@ export default function AgentLeadsPage() {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                    );
+                  })}
                   </tbody>
                 </table>
               </div>
