@@ -13,7 +13,32 @@ function AgentLoginForm() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    async function checkExistingAuth() {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.user?.status === "active") {
+            if (data.user.role === "agent") {
+              router.replace("/agent/dashboard");
+              return;
+            } else {
+              setError(`You are currently logged in as ${data.user.name} (${data.user.role}). Please sign in with an Agent account or logout to switch panels.`);
+            }
+          }
+        }
+      } catch (err) {
+        // ignore
+      } finally {
+        setCheckingAuth(false);
+      }
+    }
+    checkExistingAuth();
+  }, [router]);
 
   useEffect(() => {
     const errorParam = searchParams.get("error");
@@ -47,6 +72,14 @@ function AgentLoginForm() {
       setLoading(false);
     }
   };
+
+  if (checkingAuth) {
+    return (
+      <div className="bg-white border border-slate-200 py-16 px-6 shadow-xl rounded-2xl sm:px-10 flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-[#cc2727]/30 border-t-[#cc2727] rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white border border-slate-200 py-8 px-6 shadow-xl rounded-2xl sm:px-10">

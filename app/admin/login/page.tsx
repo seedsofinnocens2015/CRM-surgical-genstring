@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ShieldCheck, Eye, EyeOff, AlertCircle } from "lucide-react";
@@ -12,7 +12,32 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    async function checkExistingAuth() {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.user?.status === "active") {
+            if (data.user.role === "admin") {
+              router.replace("/admin/dashboard");
+              return;
+            } else {
+              setError(`You are currently logged in as ${data.user.name} (${data.user.role}). Please sign in with an Admin account or logout to switch panels.`);
+            }
+          }
+        }
+      } catch (err) {
+        // ignore
+      } finally {
+        setCheckingAuth(false);
+      }
+    }
+    checkExistingAuth();
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,6 +74,14 @@ export default function AdminLoginPage() {
       setLoading(false);
     }
   };
+
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-[#cc2727]/30 border-t-[#cc2727] rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-between pt-12">
