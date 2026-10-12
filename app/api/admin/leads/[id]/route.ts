@@ -107,9 +107,8 @@ export async function PUT(
         );
       }
       
-      // Preserve Section 1 values & patientName from existing lead
+      // Preserve system-managed Section 1 values from existing lead
       body.uniqueId = existingLead.uniqueId;
-      body.patientName = existingLead.patientName;
       body.date = existingLead.date;
       body.dateOfLead = existingLead.dateOfLead;
       body.month = existingLead.month;
@@ -118,8 +117,10 @@ export async function PUT(
       body.phoneNumber = existingLead.phoneNumber;
       body.alternateNumber = existingLead.alternateNumber;
       body.callerName = existingLead.callerName;
-      body.leadSource = existingLead.leadSource;
       body.referredBy = existingLead.referredBy;
+      // Allow agent to update patientName and leadSource if provided; otherwise keep existing
+      body.patientName = body.patientName !== undefined ? body.patientName : existingLead.patientName;
+      body.leadSource = body.leadSource !== undefined ? body.leadSource : existingLead.leadSource;
 
       const newNotes = (body.notes || "").trim();
       const newSubDisp = (body.subDispositions || "").trim();

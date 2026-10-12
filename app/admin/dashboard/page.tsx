@@ -196,13 +196,13 @@ export default function AdminDashboard() {
     // 1. Initial Load
     fetchDashboardData();
 
-    // 2. Real-time background polling every 5 seconds
+    // 2. Real-time background safety sync (every 60 seconds)
     const interval = setInterval(() => {
       // Only poll when page/tab is currently visible
       if (typeof document !== "undefined" && !document.hidden) {
         fetchDashboardData(true);
       }
-    }, 5000);
+    }, 60000);
 
     // 3. Instant refresh when user returns/switches back to this tab
     const handleVisibilityOrFocus = () => {

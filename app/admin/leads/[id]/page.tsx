@@ -36,6 +36,7 @@ import {
 } from "@/lib/leadOptions";
 import { IFormField } from "@/models/FormConfig";
 import { DEFAULT_FORM_FIELDS } from "@/lib/defaultFormFields";
+import { getCachedLeadDetail } from "@/lib/leadsCache";
 
 export default function LeadDetailPage({
   params,
@@ -103,11 +104,106 @@ export default function LeadDetailPage({
   const [selectedTreatmentOption, setSelectedTreatmentOption] = useState<string>("");
   const [otherTreatmentText, setOtherTreatmentText] = useState<string>("");
 
+  // Populate from client-side memory cache immediately (instant render without waiting for network)
+  useEffect(() => {
+    const cachedLead = getCachedLeadDetail(leadId);
+    if (cachedLead) {
+      applyLeadData(cachedLead);
+      setLoading(false);
+    }
+  }, [leadId]);
+
+  const applyLeadData = (l: any) => {
+    const locVal = l.location || "";
+    const otherLocVal = l.otherCity || "";
+    if (locVal && !LOCATIONS.includes(locVal as any)) {
+      setSelectedLocationOption("Other");
+      setOtherLocationText(locVal);
+    } else if (locVal === "Other") {
+      setSelectedLocationOption("Other");
+      setOtherLocationText(otherLocVal);
+    } else {
+      setSelectedLocationOption(locVal);
+      setOtherLocationText("");
+    }
+
+    const treatVal = l.lookingForTreatment || l.treatment || "";
+    if (treatVal && !TREATMENTS.includes(treatVal as any)) {
+      setSelectedTreatmentOption("Other");
+      setOtherTreatmentText(treatVal);
+    } else if (treatVal === "Other") {
+      setSelectedTreatmentOption("Other");
+      setOtherTreatmentText("");
+    } else {
+      setSelectedTreatmentOption(treatVal);
+      setOtherTreatmentText("");
+    }
+
+    setFormData({
+      uniqueId: l.uniqueId || "",
+      date: l.date || l.dateOfLead || "",
+      month: l.month || "",
+      leadTimestamp:
+        l.leadTimestamp ||
+        (l.createdAt
+          ? new Date(l.createdAt).toLocaleString("en-IN", {
+              day: "2-digit",
+              month: "short",
+              year: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
+            })
+          : ""),
+      createdAt: l.createdAt || "",
+      mobileNumber: l.mobileNumber || l.phoneNumber || "",
+      alternateNumber: l.alternateNumber || "",
+      callerName: l.callerName || "",
+      patientName: l.patientName || "",
+      patientAge: l.patientAge || "",
+      spouseName: l.spouseName || "",
+      spouseAge: l.spouseAge || "",
+      location: locVal,
+      otherCity: otherLocVal,
+      lookingForTreatment: treatVal,
+      preConditions: l.preConditions || l.preCondition || "",
+      surgeryDetails: l.surgeryDetails || l.surgicalData || "",
+      treatmentRequirements:
+        l.treatmentRequirements || l.treatmentRequired || "",
+      referredBy: l.referredBy || "",
+      leadSource: l.leadSource || "",
+      followUpDate: l.followUpDate || l.followUpDates || "",
+      subDispositions: l.subDispositions || l.subDisposition || "",
+      dispositions: l.dispositions || l.disposition || "",
+      validStatus: l.validStatus || "",
+      appointmentDate: l.appointmentDate || "",
+      appointmentMonth: l.appointmentMonth || "",
+      teleconsultationSlot:
+        l.teleconsultationSlot || l.appointmentSlot || "",
+      consultationCharges:
+        l.consultationCharges || l.teleConsultationCharges || "",
+      notes: l.notes || "",
+      surgeryPaymentReceived:
+        l.surgeryPaymentReceived || l.surgeryReceipt || "",
+      surgeryCost: l.surgeryCost || "",
+      surgeryDate: l.surgeryDate || "",
+    });
+    if (l.customFields) setCustomFieldValues(l.customFields);
+    if (l.auditLogs) setAuditLogs(l.auditLogs);
+    if (l.notesHistory) setNotesHistory(l.notesHistory);
+  };
+
   useEffect(() => {
     async function loadData() {
       try {
-        // 1. Check Auth
-        const meRes = await fetch("/api/auth/me");
+        // Parallel execution of Auth, Form Config, Members, and Lead details
+        const [meRes, cfgRes, membersRes, leadRes] = await Promise.all([
+          fetch("/api/auth/me"),
+          fetch("/api/admin/form-config").catch(() => null),
+          fetch("/api/admin/members").catch(() => null),
+          fetch(`/api/admin/leads/${leadId}`, { cache: "no-store" }),
+        ]);
+
         if (!meRes.ok) {
           router.push("/admin/login");
           return;
@@ -119,128 +215,35 @@ export default function LeadDetailPage({
         }
         setUser(meData.user);
 
-        // Fetch dynamic form configuration
-        try {
-          const cfgRes = await fetch("/api/admin/form-config");
-          if (cfgRes.ok) {
-            const cfgData = await cfgRes.json();
-            if (cfgData.config?.fields && Array.isArray(cfgData.config.fields)) {
-              setFormFields(cfgData.config.fields);
-            }
-            if (cfgData.config?.subDispositionMappings && Object.keys(cfgData.config.subDispositionMappings).length > 0) {
-              setSubDispositionMappings(cfgData.config.subDispositionMappings);
-            } else {
-              const subDispField = (cfgData.config?.fields || []).find((f: any) => f.id === "subDispositions");
-              if (subDispField?.subDispositionMappings && Object.keys(subDispField.subDispositionMappings).length > 0) {
-                setSubDispositionMappings(subDispField.subDispositionMappings);
-              }
+        if (cfgRes && cfgRes.ok) {
+          const cfgData = await cfgRes.json();
+          if (cfgData.config?.fields && Array.isArray(cfgData.config.fields)) {
+            setFormFields(cfgData.config.fields);
+          }
+          if (cfgData.config?.subDispositionMappings && Object.keys(cfgData.config.subDispositionMappings).length > 0) {
+            setSubDispositionMappings(cfgData.config.subDispositionMappings);
+          } else {
+            const subDispField = (cfgData.config?.fields || []).find((f: any) => f.id === "subDispositions");
+            if (subDispField?.subDispositionMappings && Object.keys(subDispField.subDispositionMappings).length > 0) {
+              setSubDispositionMappings(subDispField.subDispositionMappings);
             }
           }
-        } catch {
-          // ignore
         }
 
-        // Fetch caller names from members
-        try {
-          const membersRes = await fetch("/api/admin/members");
-          if (membersRes.ok) {
-            const mData = await membersRes.json();
-            const names = (mData.members || [])
-              .map((m: any) => m.name)
-              .filter(Boolean);
-            setCallerOptions(names);
-          }
-        } catch {
-          // ignore
+        if (membersRes && membersRes.ok) {
+          const mData = await membersRes.json();
+          const names = (mData.members || [])
+            .map((m: any) => m.name)
+            .filter(Boolean);
+          setCallerOptions(names);
         }
 
-        // 2. Fetch Lead Details
-        const leadRes = await fetch(`/api/admin/leads/${leadId}`, {
-          cache: "no-store",
-        });
         if (!leadRes.ok) {
           throw new Error("Patient lead not found");
         }
         const data = await leadRes.json();
         if (data.lead) {
-          const l = data.lead;
-          const locVal = l.location || "";
-          const otherLocVal = l.otherCity || "";
-          if (locVal && !LOCATIONS.includes(locVal as any)) {
-            setSelectedLocationOption("Other");
-            setOtherLocationText(locVal);
-          } else if (locVal === "Other") {
-            setSelectedLocationOption("Other");
-            setOtherLocationText(otherLocVal);
-          } else {
-            setSelectedLocationOption(locVal);
-            setOtherLocationText("");
-          }
-
-          const treatVal = l.lookingForTreatment || l.treatment || "";
-          if (treatVal && !TREATMENTS.includes(treatVal as any)) {
-            setSelectedTreatmentOption("Other");
-            setOtherTreatmentText(treatVal);
-          } else if (treatVal === "Other") {
-            setSelectedTreatmentOption("Other");
-            setOtherTreatmentText("");
-          } else {
-            setSelectedTreatmentOption(treatVal);
-            setOtherTreatmentText("");
-          }
-
-          setFormData({
-            uniqueId: l.uniqueId || "",
-            date: l.date || l.dateOfLead || "",
-            month: l.month || "",
-            leadTimestamp:
-              l.leadTimestamp ||
-              (l.createdAt
-                ? new Date(l.createdAt).toLocaleString("en-IN", {
-                    day: "2-digit",
-                    month: "short",
-                    year: "2-digit",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    hour12: true,
-                  })
-                : ""),
-            createdAt: l.createdAt || "",
-            mobileNumber: l.mobileNumber || l.phoneNumber || "",
-            alternateNumber: l.alternateNumber || "",
-            callerName: l.callerName || "",
-            patientName: l.patientName || "",
-            patientAge: l.patientAge || "",
-            spouseName: l.spouseName || "",
-            spouseAge: l.spouseAge || "",
-            location: locVal,
-            otherCity: otherLocVal,
-            lookingForTreatment: treatVal,
-            preConditions: l.preConditions || l.preCondition || "",
-            surgeryDetails: l.surgeryDetails || l.surgicalData || "",
-            treatmentRequirements:
-              l.treatmentRequirements || l.treatmentRequired || "",
-            referredBy: l.referredBy || "",
-            leadSource: l.leadSource || "",
-            followUpDate: l.followUpDate || l.followUpDates || "",
-            subDispositions: l.subDispositions || l.subDisposition || "",
-            dispositions: l.dispositions || l.disposition || "",
-            validStatus: l.validStatus || "",
-            appointmentDate: l.appointmentDate || "",
-            appointmentMonth: l.appointmentMonth || "",
-            teleconsultationSlot:
-              l.teleconsultationSlot || l.appointmentSlot || "",
-            consultationCharges:
-              l.consultationCharges || l.teleConsultationCharges || "",
-            notes: l.notes || "",
-            surgeryPaymentReceived:
-              l.surgeryPaymentReceived || l.surgeryReceipt || "",
-            surgeryCost: l.surgeryCost || "",
-            surgeryDate: l.surgeryDate || "",
-          });
-          setCustomFieldValues(l.customFields || {});
-          setAuditLogs(l.auditLogs || []);
-          setNotesHistory(l.notesHistory || []);
+          applyLeadData(data.lead);
         }
       } catch (err: any) {
         setError(err.message || "Failed to load lead details");

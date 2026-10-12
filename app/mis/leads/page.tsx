@@ -27,6 +27,7 @@ import {
   FileSpreadsheet,
   ArrowDownToLine,
   Eye,
+  ChevronLeft,
 } from "lucide-react";
 import MISSidebar from "@/app/components/MISSidebar";
 import Footer from "@/app/components/Footer";
@@ -38,6 +39,11 @@ import {
   parseDDMMMYYToISO,
   notifyLeadUpdated,
 } from "@/lib/leadOptions";
+import {
+  getCachedLeads,
+  setCachedLeads,
+  setCachedLeadDetail,
+} from "@/lib/leadsCache";
 
 interface ColumnConfig {
   id: string;
@@ -145,9 +151,11 @@ const TABLE_COLUMNS: ColumnConfig[] = [
 
 export default function MISLeadsPage() {
   const router = useRouter();
+  // Instant preview from in-memory cache (0ms loading time)
+  const cachedInitial = typeof window !== "undefined" ? getCachedLeads("mis") : null;
   const [user, setUser] = useState<any>(null);
-  const [leads, setLeads] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [leads, setLeads] = useState<any[]>(() => cachedInitial?.leads || []);
+  const [loading, setLoading] = useState(() => !cachedInitial);
   const [searchQuery, setSearchQuery] = useState("");
   const [toastMessage, setToastMessage] = useState("");
 
@@ -261,7 +269,10 @@ export default function MISLeadsPage() {
   const handleOpenLead = (lead: any) => {
     const id = lead.uniqueId || lead._id;
     try {
-      if (id) sessionStorage.setItem("crm_last_viewed_lead_mis", id);
+      if (id) {
+        sessionStorage.setItem("crm_last_viewed_lead_mis", id);
+        setCachedLeadDetail(id, lead);
+      }
       if (tableScrollRef.current) {
         sessionStorage.setItem("crm_leads_scroll_top_mis", String(tableScrollRef.current.scrollTop));
       }
@@ -443,10 +454,14 @@ export default function MISLeadsPage() {
     }
   };
 
-  const fetchSessionAndLeads = async () => {
+  const fetchSessionAndLeads = async (isBackground = false) => {
     try {
-      // 1. Verify MIS/Admin Auth
-      const meRes = await fetch("/api/auth/me");
+      // Parallel execution of Auth and Leads fetch
+      const [meRes, leadsRes] = await Promise.all([
+        fetch("/api/auth/me"),
+        fetch("/api/admin/leads", { cache: "no-store" }),
+      ]);
+
       if (!meRes.ok) {
         router.push("/mis/login");
         return;
@@ -458,11 +473,12 @@ export default function MISLeadsPage() {
       }
       setUser(meData.user);
 
-      // 2. Fetch All Leads
-      const leadsRes = await fetch("/api/admin/leads", { cache: "no-store" });
       if (leadsRes.ok) {
         const leadsData = await leadsRes.json();
-        setLeads(leadsData.leads || []);
+        const loadedLeads = leadsData.leads || [];
+        setLeads(loadedLeads);
+        // Save to cache for instant page switching
+        setCachedLeads("mis", loadedLeads);
       }
     } catch (err) {
       console.error(err);
@@ -645,6 +661,28 @@ export default function MISLeadsPage() {
       return dateB - dateA;
     });
   }, [leads, searchQuery, filters]);
+
+  // High-performance windowed pagination (100 leads per page)
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 100;
+  const totalPages = Math.max(1, Math.ceil(filteredLeads.length / pageSize));
+
+  // Reset to page 1 whenever filters or search query change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filters]);
+
+  // Keep page within bounds
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
+
+  const paginatedLeads = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return filteredLeads.slice(startIndex, startIndex + pageSize);
+  }, [filteredLeads, currentPage, pageSize]);
 
   // Restore scroll position instantly after data is loaded (clean, professional, no animated jumping)
   useEffect(() => {
@@ -1536,7 +1574,7 @@ export default function MISLeadsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredLeads.map((lead) => {
+                    {paginatedLeads.map((lead) => {
                       const leadId = lead.uniqueId || lead._id;
                       const isHighlighted = highlightedLeadId === leadId;
                       return (
@@ -1814,6 +1852,44 @@ export default function MISLeadsPage() {
                   })}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {/* Pagination Controls */}
+            {filteredLeads.length > pageSize && (
+              <div className="shrink-0 flex items-center justify-between px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-black shadow-xs">
+                <span className="text-gray-500">
+                  Showing <strong className="text-black">{((currentPage - 1) * pageSize) + 1}</strong> - <strong className="text-black">{Math.min(currentPage * pageSize, filteredLeads.length)}</strong> of <strong className="text-black">{filteredLeads.length}</strong> leads
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCurrentPage((p) => Math.max(1, p - 1));
+                      if (tableScrollRef.current) tableScrollRef.current.scrollTop = 0;
+                    }}
+                    disabled={currentPage === 1}
+                    className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-40 disabled:cursor-not-allowed text-black cursor-pointer transition-colors"
+                    title="Previous page"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="px-2.5 py-1 rounded-md bg-slate-100 font-mono text-[11px]">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCurrentPage((p) => Math.min(totalPages, p + 1));
+                      if (tableScrollRef.current) tableScrollRef.current.scrollTop = 0;
+                    }}
+                    disabled={currentPage >= totalPages}
+                    className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-40 disabled:cursor-not-allowed text-black cursor-pointer transition-colors"
+                    title="Next page"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             )}
           </div>

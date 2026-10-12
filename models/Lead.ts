@@ -309,6 +309,15 @@ const LeadSchema = new Schema<ILead>(
   { timestamps: true, strict: false }
 );
 
+// High-Performance Query & Sorting Indexes
+LeadSchema.index({ createdAt: -1 });
+LeadSchema.index({ callerName: 1, createdAt: -1 });
+LeadSchema.index({ followUpDate: 1 });
+LeadSchema.index({ date: 1 });
+LeadSchema.index({ location: 1 });
+LeadSchema.index({ dispositions: 1 });
+LeadSchema.index({ subDispositions: 1 });
+
 if (process.env.NODE_ENV !== "production") {
   delete (mongoose.models as any).Lead;
 }

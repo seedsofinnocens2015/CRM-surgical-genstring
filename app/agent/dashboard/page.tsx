@@ -163,12 +163,12 @@ export default function AgentDashboard() {
     // 1. Initial Load
     fetchDashboardData();
 
-    // 2. Real-time background polling every 5 seconds
+    // 2. Real-time background safety sync (every 60 seconds)
     const interval = setInterval(() => {
       if (typeof document !== "undefined" && !document.hidden) {
         fetchDashboardData(true);
       }
-    }, 5000);
+    }, 60000);
 
     // 3. Instant refresh on tab focus / visibility change
     const handleVisibilityOrFocus = () => {

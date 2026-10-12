@@ -24,9 +24,17 @@ async function verifyAuth() {
 }
 
 async function getNextUniqueId(): Promise<string> {
-  const leads = await Lead.find({}, { uniqueId: 1 }).lean();
+  // Check the most recent leads first instead of scanning all documents
+  const recentLeads = await Lead.find(
+    { uniqueId: { $regex: /^SC-\d+$/i } },
+    { uniqueId: 1 }
+  )
+    .sort({ createdAt: -1 })
+    .limit(30)
+    .lean();
+
   let maxNum = 0;
-  for (const l of leads) {
+  for (const l of recentLeads) {
     if (l.uniqueId) {
       const match = l.uniqueId.match(/^SC-(\d+)$/i);
       if (match) {
@@ -35,11 +43,18 @@ async function getNextUniqueId(): Promise<string> {
       }
     }
   }
+
+  // Fallback: If no recent matches found, check collection count + 1
+  if (maxNum === 0) {
+    const totalCount = await Lead.countDocuments();
+    return `SC-${totalCount + 1}`;
+  }
+
   return `SC-${maxNum + 1}`;
 }
 
-// GET /api/admin/leads - Fetch all leads
-export async function GET() {
+// GET /api/admin/leads - Fetch all leads (lean & projected)
+export async function GET(req: Request) {
   try {
     const session = await verifyAuth();
     if (!session) {
@@ -51,6 +66,10 @@ export async function GET() {
 
     await connectDB();
 
+    const { searchParams } = new URL(req.url);
+    const limitParam = searchParams.get("limit");
+    const limit = limitParam ? Math.min(Math.max(parseInt(limitParam, 10) || 50, 1), 5000) : 0;
+
     // If agent, strictly restrict leads to only those assigned to this agent by callerName
     let query: any = {};
     if (session.role === "agent") {
@@ -60,8 +79,20 @@ export async function GET() {
       };
     }
 
-    const leads = await Lead.find(query).sort({ createdAt: -1 });
-    const nextUniqueId = await getNextUniqueId();
+    // High performance query: Exclude heavy auditLogs and notesHistory from list view
+    let leadQuery = Lead.find(query)
+      .select({ auditLogs: 0, notesHistory: 0 })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (limit > 0) {
+      leadQuery = leadQuery.limit(limit);
+    }
+
+    const [leads, nextUniqueId] = await Promise.all([
+      leadQuery,
+      getNextUniqueId(),
+    ]);
 
     return NextResponse.json(
       { leads, nextUniqueId },
