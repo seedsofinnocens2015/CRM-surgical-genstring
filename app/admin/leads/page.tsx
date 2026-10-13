@@ -37,6 +37,8 @@ import {
   Mail,
   PlusCircle,
   MoreHorizontal,
+  GitMerge,
+  MessageCircle,
 } from "lucide-react";
 import AdminSidebar from "@/app/components/AdminSidebar";
 import Footer from "@/app/components/Footer";
@@ -432,6 +434,171 @@ export default function AdminLeadsPage() {
     }
   };
 
+  // Merge Leads State (LeadSquared-style, max 20 leads)
+  const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
+  const [mergeStep, setMergeStep] = useState<1 | 2>(1); // 1: Select Details, 2: Preview
+  const [isConfirmMergeDialogOpen, setIsConfirmMergeDialogOpen] = useState(false);
+  const [isMerging, setIsMerging] = useState(false);
+  const [masterLeadId, setMasterLeadId] = useState<string>("");
+  const [showOnlyDiffValues, setShowOnlyDiffValues] = useState<boolean>(true);
+  const [selectedMergeValues, setSelectedMergeValues] = useState<Record<string, { value: any; sourceLeadId: string }>>({});
+
+  const MERGE_FIELDS_CONFIG = [
+    { key: "patientName", label: "Patient Name" },
+    { key: "mobileNumber", label: "Phone Number" },
+    { key: "spouseName", label: "Spouse Name" },
+    { key: "patientAge", label: "Patient Age" },
+    { key: "spouseAge", label: "Wife / Spouse Age" },
+    { key: "location", label: "Center / Location" },
+    { key: "leadSource", label: "Lead Source" },
+    { key: "lookingForTreatment", label: "Treatment" },
+    { key: "treatmentRequirements", label: "Treatment Requirements" },
+    { key: "preConditions", label: "Pre Conditions" },
+    { key: "surgeryDetails", label: "Surgery Details" },
+    { key: "callerName", label: "Caller / Owner" },
+    { key: "subDispositions", label: "Sub Status / Sub Disposition" },
+    { key: "dispositions", label: "Lead Stage / Disposition" },
+    { key: "validStatus", label: "Valid Status" },
+    { key: "followUpDate", label: "Follow Up Date" },
+    { key: "appointmentDate", label: "Appointment Date" },
+    { key: "appointmentMonth", label: "Appointment Month" },
+    { key: "teleconsultationSlot", label: "Teleconsultation Slot" },
+    { key: "consultationCharges", label: "Consultation Charges" },
+    { key: "surgeryDate", label: "Surgery Date" },
+    { key: "surgeryCost", label: "Surgery Cost" },
+    { key: "surgeryPaymentReceived", label: "Surgery Payment Received" },
+    { key: "notes", label: "Notes" },
+  ];
+
+  // Selected leads list for merge modal
+  const leadsToMerge = useMemo(() => {
+    return leads.filter((l) => selectedLeadIds.has(l.uniqueId || l._id));
+  }, [leads, selectedLeadIds]);
+
+  const handleOpenMergeModal = () => {
+    if (selectedLeadIds.size < 2) {
+      setToastMessage("Please select at least 2 leads to merge.");
+      setTimeout(() => setToastMessage(""), 4000);
+      return;
+    }
+    if (selectedLeadIds.size > 20) {
+      setToastMessage("A maximum of 20 leads can be merged at a time.");
+      setTimeout(() => setToastMessage(""), 4000);
+      return;
+    }
+
+    const currentLeadsToMerge = leads.filter((l) => selectedLeadIds.has(l.uniqueId || l._id));
+    if (currentLeadsToMerge.length === 0) return;
+
+    // Default master lead is the first one
+    const defaultMaster = currentLeadsToMerge[0];
+    const defaultMasterId = defaultMaster.uniqueId || defaultMaster._id;
+    setMasterLeadId(defaultMasterId);
+
+    // Initialize selected merge values with Master Lead's values
+    const initialValues: Record<string, { value: any; sourceLeadId: string }> = {};
+    MERGE_FIELDS_CONFIG.forEach(({ key }) => {
+      const val = defaultMaster[key] !== undefined && defaultMaster[key] !== null ? defaultMaster[key] : "";
+      initialValues[key] = { value: val, sourceLeadId: defaultMasterId };
+    });
+    setSelectedMergeValues(initialValues);
+
+    setMergeStep(1);
+    setShowOnlyDiffValues(false);
+    setIsMergeModalOpen(true);
+  };
+
+  const handleSetMasterLead = (leadId: string) => {
+    setMasterLeadId(leadId);
+    const targetLead = leadsToMerge.find((l) => (l.uniqueId || l._id) === leadId);
+    if (!targetLead) return;
+
+    // Auto-select all fields of this lead as the default
+    const updated: Record<string, { value: any; sourceLeadId: string }> = {};
+    MERGE_FIELDS_CONFIG.forEach(({ key }) => {
+      const val = targetLead[key] !== undefined && targetLead[key] !== null ? targetLead[key] : "";
+      updated[key] = { value: val, sourceLeadId: leadId };
+    });
+    setSelectedMergeValues(updated);
+  };
+
+  const handleSelectFieldFromLead = (fieldKey: string, value: any, sourceLeadId: string) => {
+    setSelectedMergeValues((prev) => ({
+      ...prev,
+      [fieldKey]: { value, sourceLeadId },
+    }));
+  };
+
+  const handleSelectAllFieldsFromLead = (leadId: string) => {
+    const targetLead = leadsToMerge.find((l) => (l.uniqueId || l._id) === leadId);
+    if (!targetLead) return;
+
+    const updated = { ...selectedMergeValues };
+    MERGE_FIELDS_CONFIG.forEach(({ key }) => {
+      const val = targetLead[key] !== undefined && targetLead[key] !== null ? targetLead[key] : "";
+      updated[key] = { value: val, sourceLeadId: leadId };
+    });
+    setSelectedMergeValues(updated);
+  };
+
+  const handleExecuteMerge = async () => {
+    if (!masterLeadId) {
+      setToastMessage("Please select a master lead.");
+      setTimeout(() => setToastMessage(""), 4000);
+      return;
+    }
+
+    const otherIds = leadsToMerge
+      .map((l) => l.uniqueId || l._id)
+      .filter((id) => id !== masterLeadId);
+
+    if (otherIds.length === 0) {
+      setToastMessage("At least 2 leads are required for merging.");
+      setTimeout(() => setToastMessage(""), 4000);
+      return;
+    }
+
+    setIsMerging(true);
+    try {
+      const fieldValuesToSave: Record<string, any> = {};
+      Object.entries(selectedMergeValues).forEach(([k, item]) => {
+        fieldValuesToSave[k] = item.value;
+      });
+
+      const res = await fetch("/api/admin/leads/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          masterLeadId,
+          otherLeadIds: otherIds,
+          selectedFieldValues: fieldValuesToSave,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to merge leads");
+      }
+
+      setToastMessage(data.message || `Successfully merged ${otherIds.length} leads!`);
+      setTimeout(() => setToastMessage(""), 5000);
+
+      setIsConfirmMergeDialogOpen(false);
+      setIsMergeModalOpen(false);
+      setSelectedLeadIds(new Set());
+
+      // Invalidate memory cache and reload fresh data
+      invalidateLeadsCache("admin");
+      notifyLeadUpdated();
+      fetchSessionAndLeads(true);
+    } catch (err: any) {
+      setToastMessage(err.message || "Failed to merge leads");
+      setTimeout(() => setToastMessage(""), 5000);
+    } finally {
+      setIsMerging(false);
+    }
+  };
+
   // Table Scroll Container Ref & Last Viewed Lead State
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const [highlightedLeadId, setHighlightedLeadId] = useState<string | null>(null);
@@ -803,9 +970,9 @@ export default function AdminLeadsPage() {
 
   const filteredLeads = useMemo(() => {
     return leads.filter((lead) => {
-      // 1. Text Search Query
+      // 1. Text Search Query (Supports multiple space-separated numbers/tokens e.g. "9335920357 9810732822 9891707535")
       if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
+        const tokens = searchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
         const id = (lead.uniqueId || "").toLowerCase();
         const name = (lead.patientName || "").toLowerCase();
         const phone = (lead.mobileNumber || lead.phoneNumber || "").toLowerCase();
@@ -818,18 +985,33 @@ export default function AdminLeadsPage() {
         const source = (lead.leadSource || "").toLowerCase();
         const notes = (lead.notes || "").toLowerCase();
 
-        const matchesQuery =
-          id.includes(q) ||
-          name.includes(q) ||
-          phone.includes(q) ||
-          altPhone.includes(q) ||
-          loc.includes(q) ||
-          treat.includes(q) ||
-          subDisp.includes(q) ||
-          disp.includes(q) ||
-          caller.includes(q) ||
-          source.includes(q) ||
-          notes.includes(q);
+        // Lead matches if ANY of the space-separated tokens matches any field
+        const matchesQuery = tokens.some((token) => {
+          const cleanToken = token.replace(/\D/g, "");
+          const cleanPhone = phone.replace(/\D/g, "");
+          const cleanAlt = altPhone.replace(/\D/g, "");
+
+          // If token looks like a phone number (>= 5 digits)
+          if (cleanToken.length >= 5) {
+            if (cleanPhone.includes(cleanToken) || cleanAlt.includes(cleanToken)) {
+              return true;
+            }
+          }
+
+          return (
+            id.includes(token) ||
+            name.includes(token) ||
+            phone.includes(token) ||
+            altPhone.includes(token) ||
+            loc.includes(token) ||
+            treat.includes(token) ||
+            subDisp.includes(token) ||
+            disp.includes(token) ||
+            caller.includes(token) ||
+            source.includes(token) ||
+            notes.includes(token)
+          );
+        });
 
         if (!matchesQuery) return false;
       }
@@ -1661,7 +1843,7 @@ export default function AdminLeadsPage() {
               </div>
             </div>
 
-            {/* LeadSquared-style Sticky/Floating Bulk Selection Action Bar */}
+            {/* Sticky/Floating Bulk Selection Action Bar */}
             {selectedLeadIds.size > 0 && (
               <div className="shrink-0 bg-slate-900 text-white px-5 py-3 flex flex-wrap items-center justify-between gap-3 shadow-md z-30 animate-in fade-in slide-in-from-top-1 border-b border-slate-800">
                 <div className="flex items-center gap-3">
@@ -1677,7 +1859,7 @@ export default function AdminLeadsPage() {
                           paginatedLeads.map((l) => l.uniqueId || l._id).filter(Boolean)
                         )
                       }
-                      className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-sky-500 focus:ring-sky-500 focus:ring-offset-slate-900 cursor-pointer"
+                      className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-[#cc2727] focus:ring-[#cc2727] focus:ring-offset-slate-900 cursor-pointer"
                     />
                     <span className="text-xs font-semibold text-slate-100">
                       {selectedLeadIds.size} Record{selectedLeadIds.size > 1 ? "s" : ""} Selected
@@ -1688,7 +1870,7 @@ export default function AdminLeadsPage() {
                     <button
                       type="button"
                       onClick={handleSelectAllFiltered}
-                      className="text-xs text-sky-400 hover:text-sky-300 underline font-medium cursor-pointer"
+                      className="text-xs text-[#ff5252] hover:text-[#ff7b7b] underline font-medium cursor-pointer"
                     >
                       Select all {filteredLeads.length} leads
                     </button>
@@ -1708,7 +1890,7 @@ export default function AdminLeadsPage() {
                   <button
                     type="button"
                     onClick={handleOpenBulkUpdateModal}
-                    className="px-3.5 py-1.5 bg-sky-500 hover:bg-sky-600 text-white text-xs font-bold rounded-md shadow-sm transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                    className="px-3.5 py-1.5 bg-[#cc2727] hover:bg-[#b02121] text-white text-xs font-bold rounded-md shadow-sm transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-[#cc2727]/20"
                   >
                     <Edit3 className="w-3.5 h-3.5" />
                     <span>Bulk Update</span>
@@ -1785,6 +1967,36 @@ export default function AdminLeadsPage() {
                           <FileText className="w-3.5 h-3.5 text-slate-500" />
                           <span>Add to List</span>
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsMoreActionsOpen(false);
+                            handleOpenMergeModal();
+                          }}
+                          className="w-full text-left px-3.5 py-2 hover:bg-slate-100 flex items-center justify-between gap-2 cursor-pointer font-medium text-slate-800"
+                        >
+                          <div className="flex items-center gap-2">
+                            <GitMerge className="w-3.5 h-3.5 text-[#cc2727]" />
+                            <span>Merge Leads</span>
+                          </div>
+                          {selectedLeadIds.size > 20 && (
+                            <span className="text-[10px] bg-rose-50 text-rose-600 px-1.5 py-0.5 rounded border border-rose-200">
+                              Max 20
+                            </span>
+                          )}
+                        </button>
+                        {/* <button
+                          type="button"
+                          onClick={() => {
+                            setIsMoreActionsOpen(false);
+                            setToastMessage("WhatsApp template broadcast opened for selected leads.");
+                            setTimeout(() => setToastMessage(""), 4000);
+                          }}
+                          className="w-full text-left px-3.5 py-2 hover:bg-slate-100 flex items-center gap-2 cursor-pointer font-medium text-slate-800"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>WhatsApp</span>
+                        </button> */}
                         <div className="my-1 border-t border-slate-100" />
                         <button
                           type="button"
@@ -1841,7 +2053,7 @@ export default function AdminLeadsPage() {
                               paginatedLeads.map((l) => l.uniqueId || l._id).filter(Boolean)
                             )
                           }
-                          className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                          className="w-4 h-4 rounded border-slate-300 text-[#cc2727] focus:ring-[#cc2727] cursor-pointer"
                           title="Select all on this page"
                         />
                       </th>
@@ -2019,7 +2231,7 @@ export default function AdminLeadsPage() {
                         onClick={() => handleOpenLead(lead)}
                         className={`cursor-pointer transition-colors group ${
                           isSelected
-                            ? "bg-sky-50/70 hover:bg-sky-50 font-medium"
+                            ? "bg-[#cc2727]/10 hover:bg-[#cc2727]/15 font-medium ring-1 ring-inset ring-[#cc2727]/30"
                             : isHighlighted
                             ? "bg-amber-100/70 hover:bg-amber-100 font-medium ring-1 ring-inset ring-amber-400"
                             : "hover:bg-slate-100/60"
@@ -2034,7 +2246,7 @@ export default function AdminLeadsPage() {
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => handleToggleSelectOne(leadId)}
-                            className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                            className="w-4 h-4 rounded border-slate-300 text-[#cc2727] focus:ring-[#cc2727] cursor-pointer"
                           />
                         </td>
 
@@ -2577,7 +2789,7 @@ export default function AdminLeadsPage() {
 
             {/* Modal Body */}
             <div className="p-5 space-y-4 text-xs">
-              {/* Scope Radio Group */}
+                {/* Scope Radio Group */}
               <div className="space-y-2.5">
                 {/* 1. Update selected X Leads */}
                 <label className="flex items-center gap-2 cursor-pointer text-slate-700 select-none">
@@ -2587,7 +2799,7 @@ export default function AdminLeadsPage() {
                     value="selected"
                     checked={bulkScope === "selected"}
                     onChange={() => setBulkScope("selected")}
-                    className="w-4 h-4 text-sky-600 focus:ring-sky-500 border-slate-300 cursor-pointer"
+                    className="w-4 h-4 text-[#cc2727] focus:ring-[#cc2727] border-slate-300 cursor-pointer"
                   />
                   <span>
                     Update selected <strong>{selectedLeadIds.size > 0 ? selectedLeadIds.size : 1}</strong> Leads
@@ -2602,7 +2814,7 @@ export default function AdminLeadsPage() {
                     value="all"
                     checked={bulkScope === "all"}
                     onChange={() => setBulkScope("all")}
-                    className="w-4 h-4 text-sky-600 focus:ring-sky-500 border-slate-300 cursor-pointer"
+                    className="w-4 h-4 text-[#cc2727] focus:ring-[#cc2727] border-slate-300 cursor-pointer"
                   />
                   <span>
                     Select all <strong>{filteredLeads.length}</strong> Leads across {totalPages} pages
@@ -2617,7 +2829,7 @@ export default function AdminLeadsPage() {
                     value="count"
                     checked={bulkScope === "count"}
                     onChange={() => setBulkScope("count")}
-                    className="w-4 h-4 text-sky-600 focus:ring-sky-500 border-slate-300 cursor-pointer"
+                    className="w-4 h-4 text-[#cc2727] focus:ring-[#cc2727] border-slate-300 cursor-pointer"
                   />
                   <span className="flex items-center gap-1.5">
                     Select
@@ -2631,7 +2843,7 @@ export default function AdminLeadsPage() {
                         setBulkScope("count");
                       }}
                       onFocus={() => setBulkScope("count")}
-                      className="w-20 px-2 py-1 bg-white border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      className="w-20 px-2 py-1 bg-white border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#cc2727]"
                     />
                     Leads
                   </span>
@@ -2649,7 +2861,7 @@ export default function AdminLeadsPage() {
                     setBulkTargetField(e.target.value);
                     setBulkTargetValue("");
                   }}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#cc2727] cursor-pointer"
                 >
                   <option value="">Select Field</option>
                   <option value="callerName">Caller Name (Owner)</option>
@@ -2678,7 +2890,7 @@ export default function AdminLeadsPage() {
                     <select
                       value={bulkTargetValue}
                       onChange={(e) => setBulkTargetValue(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#cc2727] cursor-pointer"
                     >
                       <option value="">Select Caller / Owner</option>
                       {callerOptions.map((c) => (
@@ -2694,7 +2906,7 @@ export default function AdminLeadsPage() {
                     <select
                       value={bulkTargetValue}
                       onChange={(e) => setBulkTargetValue(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#cc2727] cursor-pointer"
                     >
                       <option value="">Select Sub Disposition</option>
                       {SUB_DISPOSITIONS.map((s) => (
@@ -2710,7 +2922,7 @@ export default function AdminLeadsPage() {
                     <select
                       value={bulkTargetValue}
                       onChange={(e) => setBulkTargetValue(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#cc2727] cursor-pointer"
                     >
                       <option value="">Select Disposition</option>
                       <option value="Appointment Scheduled">Appointment Scheduled</option>
@@ -2729,7 +2941,7 @@ export default function AdminLeadsPage() {
                     <select
                       value={bulkTargetValue}
                       onChange={(e) => setBulkTargetValue(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#cc2727] cursor-pointer"
                     >
                       <option value="">Select Valid Status</option>
                       <option value="Valid">Valid</option>
@@ -2743,7 +2955,7 @@ export default function AdminLeadsPage() {
                     <select
                       value={bulkTargetValue}
                       onChange={(e) => setBulkTargetValue(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#cc2727] cursor-pointer"
                     >
                       <option value="">Select Location</option>
                       {LOCATIONS.map((loc) => (
@@ -2759,7 +2971,7 @@ export default function AdminLeadsPage() {
                     <select
                       value={bulkTargetValue}
                       onChange={(e) => setBulkTargetValue(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#cc2727] cursor-pointer"
                     >
                       <option value="">Select Lead Source</option>
                       {LEAD_SOURCES.map((src) => (
@@ -2775,7 +2987,7 @@ export default function AdminLeadsPage() {
                     <select
                       value={bulkTargetValue}
                       onChange={(e) => setBulkTargetValue(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#cc2727] cursor-pointer"
                     >
                       <option value="">Select Treatment</option>
                       {TREATMENTS.map((t) => (
@@ -2792,7 +3004,7 @@ export default function AdminLeadsPage() {
                       type="date"
                       value={bulkTargetValue}
                       onChange={(e) => setBulkTargetValue(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 [color-scheme:light] focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 [color-scheme:light] focus:outline-none focus:ring-1 focus:ring-[#cc2727] cursor-pointer"
                     />
                   )}
 
@@ -2803,7 +3015,7 @@ export default function AdminLeadsPage() {
                       value={bulkTargetValue}
                       onChange={(e) => setBulkTargetValue(e.target.value)}
                       placeholder="Enter note content to set for selected leads..."
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#cc2727]"
                     />
                   )}
                 </div>
@@ -2823,9 +3035,396 @@ export default function AdminLeadsPage() {
                 type="button"
                 disabled={isBulkUpdating || !bulkTargetField}
                 onClick={handleExecuteBulkUpdate}
-                className="px-4 py-1.5 bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white rounded-md text-xs font-semibold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                className="px-4 py-1.5 bg-[#cc2727] hover:bg-[#b02121] disabled:opacity-50 text-white rounded-md text-xs font-semibold shadow-sm transition-all cursor-pointer flex items-center gap-1.5 shadow-[#cc2727]/20"
               >
                 {isBulkUpdating ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Merge Leads Modal */}
+      {isMergeModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-6xl max-h-[92vh] bg-white border border-slate-200 rounded-lg shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-white shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-[#cc2727]/10 text-[#cc2727] flex items-center justify-center border border-[#cc2727]/20">
+                  <GitMerge className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-800">Merge Leads</h3>
+                  <p className="text-xs text-slate-500">
+                    Combine up to 20 duplicate leads into a single master lead record
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMergeModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-md hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Stepper Tabs */}
+            <div className="px-6 py-3 border-b border-slate-200 bg-slate-50/70 flex items-center gap-6 shrink-0 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setMergeStep(1)}
+                className={`flex items-center gap-2 pb-1 transition-all cursor-pointer ${
+                  mergeStep === 1
+                    ? "text-[#cc2727] border-b-2 border-[#cc2727] font-bold"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                <span
+                  className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] ${
+                    mergeStep === 1
+                      ? "bg-[#cc2727] text-white"
+                      : "bg-emerald-600 text-white"
+                  }`}
+                >
+                  {mergeStep > 1 ? "✓" : "1"}
+                </span>
+                <span>Select Details</span>
+              </button>
+
+              <ChevronRight className="w-4 h-4 text-slate-300" />
+
+              <button
+                type="button"
+                onClick={() => setMergeStep(2)}
+                className={`flex items-center gap-2 pb-1 transition-all cursor-pointer ${
+                  mergeStep === 2
+                    ? "text-[#cc2727] border-b-2 border-[#cc2727] font-bold"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                <span
+                  className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] ${
+                    mergeStep === 2 ? "bg-[#cc2727] text-white" : "bg-slate-200 text-slate-600"
+                  }`}
+                >
+                  2
+                </span>
+                <span>Preview</span>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {/* Info banner */}
+              <div className="p-3.5 rounded-lg bg-[#cc2727]/5 border border-[#cc2727]/20 text-slate-700 text-xs flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-[#cc2727] shrink-0 mt-0.5" />
+                <div className="leading-relaxed">
+                  Choose which information to keep in the merged Lead. The <strong>&apos;Master Lead&apos;</strong> will keep all read-only fields like Created On, Created By etc. Any opportunities, activities, tasks, and notes from other Leads will be added to the final merged Lead.
+                </div>
+              </div>
+
+              {/* Sub-header Controls */}
+              <div className="flex items-center justify-between text-xs pt-1">
+                <span className="font-semibold text-slate-700">
+                  {leadsToMerge.length} Leads are selected for merge
+                </span>
+                {mergeStep === 1 && (
+                  <label className="flex items-center gap-2 cursor-pointer text-slate-700 select-none">
+                    <input
+                      type="checkbox"
+                      checked={showOnlyDiffValues}
+                      onChange={(e) => setShowOnlyDiffValues(e.target.checked)}
+                      className="w-4 h-4 rounded border-slate-300 text-[#cc2727] focus:ring-[#cc2727] cursor-pointer"
+                    />
+                    <span>Show only the fields with different values</span>
+                  </label>
+                )}
+              </div>
+
+              {/* STEP 1: SELECT DETAILS */}
+              {mergeStep === 1 && (
+                <div className="border border-slate-200 rounded-lg overflow-x-auto bg-white shadow-xs">
+                  <table className="w-full text-left text-xs whitespace-nowrap divide-y divide-slate-200">
+                    {/* Header Columns: Lead Fields + Columns for each selected lead */}
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-4 py-4 w-56 font-bold text-slate-700 sticky left-0 bg-slate-50 z-10 border-r border-slate-200 shadow-[2px_0_5px_rgba(0,0,0,0.03)]">
+                          Lead Fields
+                        </th>
+                        {leadsToMerge.map((lead) => {
+                          const id = lead.uniqueId || lead._id;
+                          const isMaster = masterLeadId === id;
+                          return (
+                            <th
+                              key={id}
+                              className={`px-4 py-3 min-w-[220px] max-w-[260px] align-top border-r border-slate-200 ${
+                                isMaster ? "bg-[#cc2727]/10" : "bg-white"
+                              }`}
+                            >
+                              <div className="space-y-2">
+                                <div className="font-bold text-slate-800 truncate" title={lead.patientName || "Lead"}>
+                                  {lead.patientName || lead.uniqueId || "Lead"}
+                                </div>
+                                <div className="text-[11px] text-slate-500">
+                                  Created On : {lead.createdAt ? new Date(lead.createdAt).toLocaleString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : (lead.date || "-")}
+                                </div>
+                                <div className="pt-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSetMasterLead(id)}
+                                    className={`w-full py-1.5 px-3 rounded text-xs font-semibold border transition-all cursor-pointer ${
+                                      isMaster
+                                        ? "bg-[#cc2727] text-white border-[#cc2727] shadow-xs shadow-[#cc2727]/20"
+                                        : "bg-white hover:bg-slate-50 text-slate-700 border-slate-300"
+                                    }`}
+                                  >
+                                    {isMaster ? "✓ Master Lead" : "Set as Master Lead"}
+                                  </button>
+                                </div>
+                                <label className="flex items-center gap-1.5 pt-1 text-[11px] text-slate-600 cursor-pointer select-none">
+                                  <input
+                                    type="checkbox"
+                                    onChange={() => handleSelectAllFieldsFromLead(id)}
+                                    className="w-3.5 h-3.5 rounded border-slate-300 text-[#cc2727] focus:ring-[#cc2727] cursor-pointer"
+                                  />
+                                  <span>Select all fields of this Lead</span>
+                                </label>
+                              </div>
+                            </th>
+                          );
+                        })}
+                      </tr>
+                    </thead>
+
+                    {/* Section Header Row */}
+                    <tbody className="divide-y divide-slate-100">
+                      <tr className="bg-slate-100/70 font-bold text-slate-700 text-xs">
+                        <td colSpan={leadsToMerge.length + 1} className="px-4 py-2">
+                          <span className="flex items-center gap-1.5">
+                            <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Lead Details</span>
+                          </span>
+                        </td>
+                      </tr>
+
+                      {/* Field Rows */}
+                      {MERGE_FIELDS_CONFIG.filter(({ key }) => {
+                        if (!showOnlyDiffValues) return true;
+                        // Check if values across leads are different
+                        const firstVal = String(leadsToMerge[0]?.[key] ?? "");
+                        return leadsToMerge.some((l) => String(l[key] ?? "") !== firstVal);
+                      }).map(({ key, label }) => (
+                        <tr key={key} className="hover:bg-slate-50/70">
+                          {/* Field Label (Sticky Left) */}
+                          <td className="px-4 py-3 font-semibold text-slate-700 sticky left-0 bg-white hover:bg-slate-50 z-10 border-r border-slate-200 shadow-[2px_0_5px_rgba(0,0,0,0.03)]">
+                            {label}
+                          </td>
+
+                          {/* Values across leads */}
+                          {leadsToMerge.map((lead) => {
+                            const leadId = lead.uniqueId || lead._id;
+                            const isChosen = selectedMergeValues[key]?.sourceLeadId === leadId;
+                            const rawVal = lead[key];
+                            const displayVal = rawVal !== undefined && rawVal !== null && String(rawVal).trim() !== "" ? String(rawVal) : "-";
+
+                            return (
+                              <td
+                                key={leadId}
+                                onClick={() => handleSelectFieldFromLead(key, rawVal, leadId)}
+                                className={`px-4 py-3 cursor-pointer border-r border-slate-200 transition-colors ${
+                                  isChosen
+                                    ? "bg-[#cc2727]/10 font-semibold text-slate-900 ring-1 ring-inset ring-[#cc2727]/30"
+                                    : "text-slate-700 hover:bg-slate-100/50"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="truncate max-w-[200px]" title={displayVal}>
+                                    {displayVal}
+                                  </span>
+                                  {isChosen && (
+                                    <Check className="w-4 h-4 text-[#cc2727] shrink-0 font-bold" />
+                                  )}
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* STEP 2: PREVIEW */}
+              {mergeStep === 2 && (
+                <div className="border border-slate-200 rounded-lg overflow-x-auto bg-white shadow-xs">
+                  <table className="w-full text-left text-xs whitespace-nowrap divide-y divide-slate-200">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-4 py-3 w-56 font-bold text-slate-700 border-r border-slate-200">
+                          Lead Fields
+                        </th>
+                        <th className="px-4 py-3 font-bold text-slate-800 flex items-center gap-2">
+                          <User className="w-4 h-4 text-[#cc2727]" />
+                          <span>
+                            Merged Lead Result (Master:{" "}
+                            {leadsToMerge.find((l) => (l.uniqueId || l._id) === masterLeadId)?.patientName || masterLeadId}
+                            )
+                          </span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      <tr className="bg-slate-100/70 font-bold text-slate-700 text-xs">
+                        <td colSpan={2} className="px-4 py-2">
+                          <span className="flex items-center gap-1.5">
+                            <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Lead Details (Final Values)</span>
+                          </span>
+                        </td>
+                      </tr>
+
+                      {MERGE_FIELDS_CONFIG.map(({ key, label }) => {
+                        const item = selectedMergeValues[key];
+                        const val = item?.value;
+                        const displayVal = val !== undefined && val !== null && String(val).trim() !== "" ? String(val) : "-";
+                        const sourceLead = leadsToMerge.find((l) => (l.uniqueId || l._id) === item?.sourceLeadId);
+
+                        return (
+                          <tr key={key} className="hover:bg-slate-50/70">
+                            <td className="px-4 py-2.5 font-semibold text-slate-700 border-r border-slate-200">
+                              {label}
+                            </td>
+                            <td className="px-4 py-2.5 text-slate-800">
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="font-medium">{displayVal}</span>
+                                {item?.sourceLeadId && (
+                                  <span className="text-[10px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                                    From: {sourceLead?.patientName || item.sourceLeadId}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
+              <div>
+                {mergeStep === 2 && (
+                  <button
+                    type="button"
+                    onClick={() => setMergeStep(1)}
+                    className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-md text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    ← Previous
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsMergeModalOpen(false)}
+                  className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-md text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+
+                {mergeStep === 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => setMergeStep(2)}
+                    className="px-5 py-2 bg-[#cc2727] hover:bg-[#b02121] text-white rounded-md text-xs font-bold shadow-sm transition-all cursor-pointer shadow-[#cc2727]/20"
+                  >
+                    Next
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsConfirmMergeDialogOpen(true)}
+                    className="px-5 py-2 bg-[#cc2727] hover:bg-[#b02121] text-white rounded-md text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5 shadow-[#cc2727]/20"
+                  >
+                    <GitMerge className="w-3.5 h-3.5" />
+                    <span>Merge Leads</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Dialog: "Confirm Merge" */}
+      {isConfirmMergeDialogOpen && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-lg bg-white border border-slate-200 rounded-xl shadow-2xl p-6 space-y-4 animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-900">Confirm Merge</h3>
+              <button
+                type="button"
+                onClick={() => setIsConfirmMergeDialogOpen(false)}
+                className="text-slate-400 hover:text-slate-700 p-1 rounded-md cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* List of leads being merged */}
+            <div className="text-xs text-slate-800 leading-relaxed font-semibold max-h-36 overflow-y-auto bg-slate-50 p-3 rounded-lg border border-slate-200">
+              {leadsToMerge
+                .filter((l) => (l.uniqueId || l._id) !== masterLeadId)
+                .map((l) => l.patientName || l.mobileNumber || l.uniqueId)
+                .join(", ")}{" "}
+              will be merged into{" "}
+              <span className="text-[#cc2727] font-bold">
+                {leadsToMerge.find((l) => (l.uniqueId || l._id) === masterLeadId)?.patientName ||
+                  leadsToMerge.find((l) => (l.uniqueId || l._id) === masterLeadId)?.mobileNumber ||
+                  masterLeadId}
+              </span>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              All the opportunities, activities, task, notes and selected details related to above Leads will get merged with the master Lead. All other Leads apart from master Lead will be deleted.
+            </p>
+
+            <p className="text-xs font-medium text-slate-700">
+              Are sure you want to merge the selected Leads?
+            </p>
+
+            {/* Warning Callout */}
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Please note, this action cannot be undone.</span>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isMerging}
+                onClick={() => setIsConfirmMergeDialogOpen(false)}
+                className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-md text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isMerging}
+                onClick={handleExecuteMerge}
+                className="px-5 py-2 bg-[#cc2727] hover:bg-[#b02121] disabled:opacity-50 text-white rounded-md text-xs font-bold shadow-md transition-all cursor-pointer flex items-center gap-2 shadow-[#cc2727]/20"
+              >
+                <GitMerge className="w-3.5 h-3.5" />
+                <span>{isMerging ? "Merging..." : "Merge Lead"}</span>
               </button>
             </div>
           </div>

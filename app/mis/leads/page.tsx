@@ -557,9 +557,9 @@ export default function MISLeadsPage() {
 
   const filteredLeads = useMemo(() => {
     return leads.filter((lead) => {
-      // 1. Text Search Query
+      // 1. Text Search Query (Supports multiple space-separated numbers/tokens e.g. "9335920357 9810732822 9891707535")
       if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
+        const tokens = searchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
         const id = (lead.uniqueId || "").toLowerCase();
         const name = (lead.patientName || "").toLowerCase();
         const phone = (lead.mobileNumber || lead.phoneNumber || "").toLowerCase();
@@ -572,18 +572,33 @@ export default function MISLeadsPage() {
         const source = (lead.leadSource || "").toLowerCase();
         const notes = (lead.notes || "").toLowerCase();
 
-        const matchesQuery =
-          id.includes(q) ||
-          name.includes(q) ||
-          phone.includes(q) ||
-          altPhone.includes(q) ||
-          loc.includes(q) ||
-          treat.includes(q) ||
-          subDisp.includes(q) ||
-          disp.includes(q) ||
-          caller.includes(q) ||
-          source.includes(q) ||
-          notes.includes(q);
+        // Lead matches if ANY of the space-separated tokens matches any field
+        const matchesQuery = tokens.some((token) => {
+          const cleanToken = token.replace(/\D/g, "");
+          const cleanPhone = phone.replace(/\D/g, "");
+          const cleanAlt = altPhone.replace(/\D/g, "");
+
+          // If token looks like a phone number (>= 5 digits)
+          if (cleanToken.length >= 5) {
+            if (cleanPhone.includes(cleanToken) || cleanAlt.includes(cleanToken)) {
+              return true;
+            }
+          }
+
+          return (
+            id.includes(token) ||
+            name.includes(token) ||
+            phone.includes(token) ||
+            altPhone.includes(token) ||
+            loc.includes(token) ||
+            treat.includes(token) ||
+            subDisp.includes(token) ||
+            disp.includes(token) ||
+            caller.includes(token) ||
+            source.includes(token) ||
+            notes.includes(token)
+          );
+        });
 
         if (!matchesQuery) return false;
       }
