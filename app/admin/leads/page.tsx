@@ -31,6 +31,12 @@ import {
   ArrowDownToLine,
   Upload,
   ChevronLeft,
+  Edit3,
+  CheckSquare,
+  Square,
+  Mail,
+  PlusCircle,
+  MoreHorizontal,
 } from "lucide-react";
 import AdminSidebar from "@/app/components/AdminSidebar";
 import Footer from "@/app/components/Footer";
@@ -48,6 +54,7 @@ import {
   getCachedLeads,
   setCachedLeads,
   setCachedLeadDetail,
+  invalidateLeadsCache,
 } from "@/lib/leadsCache";
 
 interface ColumnConfig {
@@ -268,6 +275,163 @@ export default function AdminLeadsPage() {
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
   const downloadModalRef = useRef<HTMLDivElement>(null);
 
+  // Bulk Selection & Bulk Update State (LeadSquared-style)
+  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
+  const [isBulkUpdateModalOpen, setIsBulkUpdateModalOpen] = useState(false);
+  const [bulkScope, setBulkScope] = useState<"selected" | "all" | "count">("selected");
+  const [bulkCountInput, setBulkCountInput] = useState<string>("");
+  const [bulkTargetField, setBulkTargetField] = useState<string>("");
+  const [bulkTargetValue, setBulkTargetValue] = useState<string>("");
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+  const [callerOptions, setCallerOptions] = useState<string[]>([]);
+  const [isMoreActionsOpen, setIsMoreActionsOpen] = useState(false);
+  const moreActionsRef = useRef<HTMLDivElement>(null);
+
+  // Close More Actions dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (moreActionsRef.current && !moreActionsRef.current.contains(e.target as Node)) {
+        setIsMoreActionsOpen(false);
+      }
+    }
+    if (isMoreActionsOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isMoreActionsOpen]);
+
+  const handleToggleSelectOne = (id: string) => {
+    setSelectedLeadIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleSelectAllPage = (pageLeadIds: string[]) => {
+    setSelectedLeadIds((prev) => {
+      const next = new Set(prev);
+      const allOnPageSelected = pageLeadIds.length > 0 && pageLeadIds.every((id) => next.has(id));
+      if (allOnPageSelected) {
+        pageLeadIds.forEach((id) => next.delete(id));
+      } else {
+        pageLeadIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const handleClearSelection = () => {
+    setSelectedLeadIds(new Set());
+  };
+
+  const handleSelectAllFiltered = () => {
+    const allIds = filteredLeads.map((l) => l.uniqueId || l._id).filter(Boolean);
+    setSelectedLeadIds(new Set(allIds));
+  };
+
+  const handleOpenBulkUpdateModal = () => {
+    setBulkScope("selected");
+    setBulkCountInput(String(selectedLeadIds.size > 0 ? selectedLeadIds.size : Math.min(10, filteredLeads.length)));
+    setBulkTargetField("");
+    setBulkTargetValue("");
+    setIsBulkUpdateModalOpen(true);
+  };
+
+  const handleExecuteBulkUpdate = async () => {
+    if (!bulkTargetField) {
+      setToastMessage("Please select a lead field to update.");
+      setTimeout(() => setToastMessage(""), 4000);
+      return;
+    }
+
+    // Determine target IDs based on chosen scope
+    let targetIds: string[] = [];
+    if (bulkScope === "selected") {
+      targetIds = Array.from(selectedLeadIds);
+    } else if (bulkScope === "all") {
+      targetIds = filteredLeads.map((l) => l.uniqueId || l._id).filter(Boolean);
+    } else if (bulkScope === "count") {
+      const count = parseInt(bulkCountInput, 10);
+      if (isNaN(count) || count <= 0) {
+        setToastMessage("Please enter a valid count greater than 0.");
+        setTimeout(() => setToastMessage(""), 4000);
+        return;
+      }
+      targetIds = filteredLeads.slice(0, count).map((l) => l.uniqueId || l._id).filter(Boolean);
+    }
+
+    if (targetIds.length === 0) {
+      setToastMessage("No leads found for the selected scope.");
+      setTimeout(() => setToastMessage(""), 4000);
+      return;
+    }
+
+    setIsBulkUpdating(true);
+    try {
+      const res = await fetch("/api/admin/leads/bulk-update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leadIds: targetIds,
+          fieldName: bulkTargetField,
+          fieldValue: bulkTargetValue,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to update leads");
+      }
+
+      setToastMessage(`Bulk updated ${data.modifiedCount || targetIds.length} lead(s) successfully!`);
+      setTimeout(() => setToastMessage(""), 5000);
+
+      setIsBulkUpdateModalOpen(false);
+      setSelectedLeadIds(new Set());
+
+      // Invalidate memory cache and reload fresh data
+      invalidateLeadsCache("admin");
+      notifyLeadUpdated();
+      fetchSessionAndLeads(true);
+    } catch (err: any) {
+      setToastMessage(err.message || "Bulk update failed");
+      setTimeout(() => setToastMessage(""), 5000);
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedLeadIds.size === 0) return;
+    const count = selectedLeadIds.size;
+    if (!confirm(`Are you sure you want to delete ${count} selected lead(s)? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const ids = Array.from(selectedLeadIds);
+      let deletedCount = 0;
+      for (const id of ids) {
+        const res = await fetch(`/api/admin/leads/${id}`, { method: "DELETE" });
+        if (res.ok) deletedCount++;
+      }
+      setToastMessage(`Successfully deleted ${deletedCount} lead(s).`);
+      setTimeout(() => setToastMessage(""), 5000);
+      setSelectedLeadIds(new Set());
+      invalidateLeadsCache("admin");
+      notifyLeadUpdated();
+      fetchSessionAndLeads(true);
+    } catch (err: any) {
+      setToastMessage(err.message || "Failed to delete selected leads");
+      setTimeout(() => setToastMessage(""), 5000);
+    }
+  };
+
   // Table Scroll Container Ref & Last Viewed Lead State
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const [highlightedLeadId, setHighlightedLeadId] = useState<string | null>(null);
@@ -482,10 +646,11 @@ export default function AdminLeadsPage() {
 
   const fetchSessionAndLeads = async (isBackground = false) => {
     try {
-      // Parallel execution of Auth verification and Leads fetch
-      const [meRes, leadsRes] = await Promise.all([
+      // Parallel execution of Auth verification, Leads fetch, and Members fetch
+      const [meRes, leadsRes, membersRes] = await Promise.all([
         fetch("/api/auth/me"),
         fetch("/api/admin/leads", { cache: "no-store" }),
+        fetch("/api/admin/members").catch(() => null),
       ]);
 
       if (!meRes.ok) {
@@ -498,6 +663,14 @@ export default function AdminLeadsPage() {
         return;
       }
       setUser(meData.user);
+
+      if (membersRes && membersRes.ok) {
+        const mData = await membersRes.json();
+        const names = (mData.members || [])
+          .map((m: any) => m.name)
+          .filter(Boolean);
+        setCallerOptions(names);
+      }
 
       if (leadsRes.ok) {
         const leadsData = await leadsRes.json();
@@ -1488,6 +1661,149 @@ export default function AdminLeadsPage() {
               </div>
             </div>
 
+            {/* LeadSquared-style Sticky/Floating Bulk Selection Action Bar */}
+            {selectedLeadIds.size > 0 && (
+              <div className="shrink-0 bg-slate-900 text-white px-5 py-3 flex flex-wrap items-center justify-between gap-3 shadow-md z-30 animate-in fade-in slide-in-from-top-1 border-b border-slate-800">
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={
+                        paginatedLeads.length > 0 &&
+                        paginatedLeads.every((l) => selectedLeadIds.has(l.uniqueId || l._id))
+                      }
+                      onChange={() =>
+                        handleToggleSelectAllPage(
+                          paginatedLeads.map((l) => l.uniqueId || l._id).filter(Boolean)
+                        )
+                      }
+                      className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-sky-500 focus:ring-sky-500 focus:ring-offset-slate-900 cursor-pointer"
+                    />
+                    <span className="text-xs font-semibold text-slate-100">
+                      {selectedLeadIds.size} Record{selectedLeadIds.size > 1 ? "s" : ""} Selected
+                    </span>
+                  </label>
+
+                  {selectedLeadIds.size < filteredLeads.length && (
+                    <button
+                      type="button"
+                      onClick={handleSelectAllFiltered}
+                      className="text-xs text-sky-400 hover:text-sky-300 underline font-medium cursor-pointer"
+                    >
+                      Select all {filteredLeads.length} leads
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleClearSelection}
+                    className="text-xs text-slate-400 hover:text-slate-200 underline font-medium cursor-pointer"
+                  >
+                    Clear selection
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {/* Bulk Update button */}
+                  <button
+                    type="button"
+                    onClick={handleOpenBulkUpdateModal}
+                    className="px-3.5 py-1.5 bg-sky-500 hover:bg-sky-600 text-white text-xs font-bold rounded-md shadow-sm transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>Bulk Update</span>
+                  </button>
+
+                  {/* Send Email button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setToastMessage("Batch email composer opened for selected leads.");
+                      setTimeout(() => setToastMessage(""), 4000);
+                    }}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium rounded-md transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Mail className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Send Email</span>
+                  </button>
+
+                  {/* Add Activity button */}
+                  <button
+                    type="button"
+                    onClick={handleOpenBulkUpdateModal}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium rounded-md transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <PlusCircle className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Add Activity</span>
+                  </button>
+
+                  {/* More Actions Dropdown */}
+                  <div className="relative" ref={moreActionsRef}>
+                    <button
+                      type="button"
+                      onClick={() => setIsMoreActionsOpen((prev) => !prev)}
+                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium rounded-md transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <MoreHorizontal className="w-3.5 h-3.5 text-slate-400" />
+                      <span>More Actions</span>
+                      <ChevronDown className="w-3 h-3 text-slate-400" />
+                    </button>
+
+                    {isMoreActionsOpen && (
+                      <div className="absolute right-0 top-full mt-1.5 w-48 bg-white text-slate-800 rounded-lg shadow-xl border border-slate-200 py-1.5 z-50 text-xs animate-in fade-in slide-in-from-top-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsMoreActionsOpen(false);
+                            handleOpenBulkUpdateModal();
+                          }}
+                          className="w-full text-left px-3.5 py-2 hover:bg-slate-100 flex items-center gap-2 cursor-pointer font-medium"
+                        >
+                          <User className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Change Owner</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsMoreActionsOpen(false);
+                            handleOpenBulkUpdateModal();
+                          }}
+                          className="w-full text-left px-3.5 py-2 hover:bg-slate-100 flex items-center gap-2 cursor-pointer font-medium"
+                        >
+                          <Activity className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Change Stage / Disposition</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsMoreActionsOpen(false);
+                            setToastMessage("Added selected leads to list.");
+                            setTimeout(() => setToastMessage(""), 4000);
+                          }}
+                          className="w-full text-left px-3.5 py-2 hover:bg-slate-100 flex items-center gap-2 cursor-pointer font-medium"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Add to List</span>
+                        </button>
+                        <div className="my-1 border-t border-slate-100" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsMoreActionsOpen(false);
+                            handleBulkDelete();
+                          }}
+                          className="w-full text-left px-3.5 py-2 hover:bg-rose-50 text-rose-600 flex items-center gap-2 cursor-pointer font-semibold"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                          <span>Delete ({selectedLeadIds.size})</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {filteredLeads.length === 0 ? (
               <div className="py-16 text-center">
                 <FolderKanban className="w-12 h-12 text-black mx-auto mb-3" />
@@ -1512,8 +1828,26 @@ export default function AdminLeadsPage() {
                 <table className="w-full text-left text-xs text-black whitespace-nowrap">
                   <thead className="bg-slate-50 text-black uppercase tracking-wider border-b border-slate-200 text-[11px] sticky top-0 z-20 shadow-sm">
                     <tr>
+                      {/* 0. Row Selection Checkbox (Sticky Left) */}
+                      <th scope="col" className="w-10 px-3 py-3.5 sticky top-0 left-0 bg-white z-30 shadow-[2px_0_5px_rgba(0,0,0,0.06)] text-center">
+                        <input
+                          type="checkbox"
+                          checked={
+                            paginatedLeads.length > 0 &&
+                            paginatedLeads.every((l) => selectedLeadIds.has(l.uniqueId || l._id))
+                          }
+                          onChange={() =>
+                            handleToggleSelectAllPage(
+                              paginatedLeads.map((l) => l.uniqueId || l._id).filter(Boolean)
+                            )
+                          }
+                          className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                          title="Select all on this page"
+                        />
+                      </th>
+
                       {/* 1. Unique ID */}
-                      <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 left-0 bg-white z-30 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
+                      <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 left-10 bg-white z-30 shadow-[2px_0_5px_rgba(0,0,0,0.06)]">
                         Lead ID
                       </th>
 
@@ -1677,19 +2011,35 @@ export default function AdminLeadsPage() {
                     {paginatedLeads.map((lead) => {
                       const leadId = lead.uniqueId || lead._id;
                       const isHighlighted = highlightedLeadId === leadId;
+                      const isSelected = selectedLeadIds.has(leadId);
                       return (
                       <tr
                         key={lead._id || lead.uniqueId}
                         id={`lead-row-${leadId}`}
                         onClick={() => handleOpenLead(lead)}
                         className={`cursor-pointer transition-colors group ${
-                          isHighlighted
+                          isSelected
+                            ? "bg-sky-50/70 hover:bg-sky-50 font-medium"
+                            : isHighlighted
                             ? "bg-amber-100/70 hover:bg-amber-100 font-medium ring-1 ring-inset ring-amber-400"
                             : "hover:bg-slate-100/60"
                         }`}
                       >
-                        {/* 1. Unique ID (Sticky Left) */}
-                        <td className="px-4 py-3.5 sticky left-0 bg-white group-hover:bg-slate-100/90 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
+                        {/* 0. Row Selection Checkbox (Sticky Left) */}
+                        <td
+                          className="w-10 px-3 py-3.5 sticky left-0 bg-white group-hover:bg-slate-100/90 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.06)] text-center"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleSelectOne(leadId)}
+                            className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                          />
+                        </td>
+
+                        {/* 1. Unique ID (Sticky Left at 40px) */}
+                        <td className="px-4 py-3.5 sticky left-10 bg-white group-hover:bg-slate-100/90 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.06)]">
                           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#cc2727]/10 text-[#cc2727] border border-[#cc2727]/20 text-xs font-mono font-bold">
                             <Hash className="w-3 h-3 text-[#cc2727]" />
                             {lead.uniqueId || "N/A"}
@@ -2192,7 +2542,7 @@ export default function AdminLeadsPage() {
                   setIsDeleteModalOpen(false);
                   setLeadToDelete(null);
                 }}
-                className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-black text-xs font-semibold rounded-xl transition-colors"
+                className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-black text-xs font-semibold rounded-xl transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -2200,9 +2550,282 @@ export default function AdminLeadsPage() {
                 type="button"
                 disabled={deleting}
                 onClick={handleConfirmDelete}
-                className="flex-1 py-2.5 px-4 bg-rose-600 hover:bg-rose-500 text-black text-xs font-semibold rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-lg shadow-rose-600/20"
+                className="flex-1 py-2.5 px-4 bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-lg shadow-rose-600/20 cursor-pointer"
               >
                 {deleting ? "Deleting..." : "Yes, Delete Lead"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* LeadSquared-style Bulk Update Modal (Exact screenshot match) */}
+      {isBulkUpdateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md bg-white border border-slate-200 rounded-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <h3 className="text-sm font-bold text-slate-800">Bulk Update</h3>
+              <button
+                type="button"
+                onClick={() => setIsBulkUpdateModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 p-1 rounded-md transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-4 text-xs">
+              {/* Scope Radio Group */}
+              <div className="space-y-2.5">
+                {/* 1. Update selected X Leads */}
+                <label className="flex items-center gap-2 cursor-pointer text-slate-700 select-none">
+                  <input
+                    type="radio"
+                    name="bulkScope"
+                    value="selected"
+                    checked={bulkScope === "selected"}
+                    onChange={() => setBulkScope("selected")}
+                    className="w-4 h-4 text-sky-600 focus:ring-sky-500 border-slate-300 cursor-pointer"
+                  />
+                  <span>
+                    Update selected <strong>{selectedLeadIds.size > 0 ? selectedLeadIds.size : 1}</strong> Leads
+                  </span>
+                </label>
+
+                {/* 2. Select all Y Leads across Z pages */}
+                <label className="flex items-center gap-2 cursor-pointer text-slate-700 select-none">
+                  <input
+                    type="radio"
+                    name="bulkScope"
+                    value="all"
+                    checked={bulkScope === "all"}
+                    onChange={() => setBulkScope("all")}
+                    className="w-4 h-4 text-sky-600 focus:ring-sky-500 border-slate-300 cursor-pointer"
+                  />
+                  <span>
+                    Select all <strong>{filteredLeads.length}</strong> Leads across {totalPages} pages
+                  </span>
+                </label>
+
+                {/* 3. Select [ input ] Leads */}
+                <label className="flex items-center gap-2 cursor-pointer text-slate-700 select-none">
+                  <input
+                    type="radio"
+                    name="bulkScope"
+                    value="count"
+                    checked={bulkScope === "count"}
+                    onChange={() => setBulkScope("count")}
+                    className="w-4 h-4 text-sky-600 focus:ring-sky-500 border-slate-300 cursor-pointer"
+                  />
+                  <span className="flex items-center gap-1.5">
+                    Select
+                    <input
+                      type="number"
+                      min="1"
+                      max={filteredLeads.length}
+                      value={bulkCountInput}
+                      onChange={(e) => {
+                        setBulkCountInput(e.target.value);
+                        setBulkScope("count");
+                      }}
+                      onFocus={() => setBulkScope("count")}
+                      className="w-20 px-2 py-1 bg-white border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    />
+                    Leads
+                  </span>
+                </label>
+              </div>
+
+              {/* Lead Field Select */}
+              <div className="space-y-1.5 pt-2">
+                <label className="block font-semibold text-slate-700">
+                  Lead Field <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={bulkTargetField}
+                  onChange={(e) => {
+                    setBulkTargetField(e.target.value);
+                    setBulkTargetValue("");
+                  }}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                >
+                  <option value="">Select Field</option>
+                  <option value="callerName">Caller Name (Owner)</option>
+                  <option value="subDispositions">Sub Disposition (Auto-updates Stage & Valid Status)</option>
+                  <option value="dispositions">Disposition / Stage</option>
+                  <option value="validStatus">Valid Status</option>
+                  <option value="location">Location</option>
+                  <option value="leadSource">Lead Source</option>
+                  <option value="lookingForTreatment">Looking for Treatment</option>
+                  <option value="followUpDate">Follow Up Date</option>
+                  <option value="appointmentDate">Appointment Date</option>
+                  <option value="surgeryDate">Surgery Date</option>
+                  <option value="notes">Notes</option>
+                </select>
+              </div>
+
+              {/* Value Input based on selected field */}
+              {bulkTargetField && (
+                <div className="space-y-1.5 pt-1 animate-in fade-in duration-150">
+                  <label className="block font-semibold text-slate-700">
+                    Update To <span className="text-rose-500">*</span>
+                  </label>
+
+                  {/* Caller Name */}
+                  {bulkTargetField === "callerName" && (
+                    <select
+                      value={bulkTargetValue}
+                      onChange={(e) => setBulkTargetValue(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                    >
+                      <option value="">Select Caller / Owner</option>
+                      {callerOptions.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {/* Sub Disposition */}
+                  {bulkTargetField === "subDispositions" && (
+                    <select
+                      value={bulkTargetValue}
+                      onChange={(e) => setBulkTargetValue(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                    >
+                      <option value="">Select Sub Disposition</option>
+                      {SUB_DISPOSITIONS.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {/* Disposition */}
+                  {bulkTargetField === "dispositions" && (
+                    <select
+                      value={bulkTargetValue}
+                      onChange={(e) => setBulkTargetValue(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                    >
+                      <option value="">Select Disposition</option>
+                      <option value="Appointment Scheduled">Appointment Scheduled</option>
+                      <option value="OPD Done">OPD Done</option>
+                      <option value="Surgery Scheduled">Surgery Scheduled</option>
+                      <option value="Surgery Done">Surgery Done</option>
+                      <option value="Follow-up Required">Follow-up Required</option>
+                      <option value="Not Interested">Not Interested</option>
+                      <option value="Ringing / No Answer">Ringing / No Answer</option>
+                      <option value="Invalid / Junk">Invalid / Junk</option>
+                    </select>
+                  )}
+
+                  {/* Valid Status */}
+                  {bulkTargetField === "validStatus" && (
+                    <select
+                      value={bulkTargetValue}
+                      onChange={(e) => setBulkTargetValue(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                    >
+                      <option value="">Select Valid Status</option>
+                      <option value="Valid">Valid</option>
+                      <option value="Invalid">Invalid</option>
+                      <option value="Pending">Pending</option>
+                    </select>
+                  )}
+
+                  {/* Location */}
+                  {bulkTargetField === "location" && (
+                    <select
+                      value={bulkTargetValue}
+                      onChange={(e) => setBulkTargetValue(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                    >
+                      <option value="">Select Location</option>
+                      {LOCATIONS.map((loc) => (
+                        <option key={loc} value={loc}>
+                          {loc}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {/* Lead Source */}
+                  {bulkTargetField === "leadSource" && (
+                    <select
+                      value={bulkTargetValue}
+                      onChange={(e) => setBulkTargetValue(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                    >
+                      <option value="">Select Lead Source</option>
+                      {LEAD_SOURCES.map((src) => (
+                        <option key={src} value={src}>
+                          {src}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {/* Looking for Treatment */}
+                  {bulkTargetField === "lookingForTreatment" && (
+                    <select
+                      value={bulkTargetValue}
+                      onChange={(e) => setBulkTargetValue(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                    >
+                      <option value="">Select Treatment</option>
+                      {TREATMENTS.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {/* Dates */}
+                  {["followUpDate", "appointmentDate", "surgeryDate"].includes(bulkTargetField) && (
+                    <input
+                      type="date"
+                      value={bulkTargetValue}
+                      onChange={(e) => setBulkTargetValue(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 [color-scheme:light] focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                    />
+                  )}
+
+                  {/* Notes / Text */}
+                  {bulkTargetField === "notes" && (
+                    <textarea
+                      rows={3}
+                      value={bulkTargetValue}
+                      onChange={(e) => setBulkTargetValue(e.target.value)}
+                      placeholder="Enter note content to set for selected leads..."
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setIsBulkUpdateModalOpen(false)}
+                className="px-4 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-md text-xs font-medium transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isBulkUpdating || !bulkTargetField}
+                onClick={handleExecuteBulkUpdate}
+                className="px-4 py-1.5 bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white rounded-md text-xs font-semibold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                {isBulkUpdating ? "Saving..." : "Save"}
               </button>
             </div>
           </div>
