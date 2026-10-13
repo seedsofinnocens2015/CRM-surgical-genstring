@@ -1,5 +1,8 @@
 "use client";
 
+import LeadSquaredFilter from "@/app/components/LeadSquaredFilter";
+import ManageColumnsModal, { ColumnItem } from "@/app/components/ManageColumnsModal";
+import { renderLeadTableCell } from "@/app/components/LeadTableCellRenderer";
 import { useEffect, useState, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -66,6 +69,7 @@ export interface LeadFilters {
   appointmentDateTo: string;
   surgeryDateFrom: string;
   surgeryDateTo: string;
+  quickMetricFilter?: string;
 }
 
 export const initialFilters: LeadFilters = {
@@ -84,6 +88,7 @@ export const initialFilters: LeadFilters = {
   appointmentDateTo: "",
   surgeryDateFrom: "",
   surgeryDateTo: "",
+  quickMetricFilter: "",
 };
 
 function normalizeDateStr(dateStr: string | undefined | null): string {
@@ -164,8 +169,39 @@ export default function MISLeadsPage() {
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
 
   // Load saved filters on mount
+  // Load saved filters on mount or apply filter from URL query param (e.g. from KPI metric cards)
   useEffect(() => {
     try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const filterParam = urlParams.get("filter");
+
+      if (filterParam) {
+        if (filterParam === "all") {
+          setFilters(initialFilters);
+          localStorage.removeItem("crm_leads_filters_mis");
+          return;
+        }
+
+        let updated = { ...initialFilters };
+        if (filterParam === "converted") {
+          updated.dispositions = "Converted";
+        } else if (filterParam === "contacted") {
+          updated.dispositions = "Contacted";
+        } else if (filterParam === "contact_attempt") {
+          updated.dispositions = "Contact Attempt";
+        } else if (filterParam === "closed") {
+          updated.dispositions = "Closed";
+        } else if (filterParam === "follow_up") {
+          updated.quickMetricFilter = "follow_up";
+        } else if (filterParam === "unassigned") {
+          updated.quickMetricFilter = "unassigned";
+        }
+
+        setFilters(updated);
+        localStorage.setItem("crm_leads_filters_mis", JSON.stringify(updated));
+        return;
+      }
+
       const savedFilters = localStorage.getItem("crm_leads_filters_mis");
       if (savedFilters) {
         const parsed = JSON.parse(savedFilters);
@@ -202,6 +238,9 @@ export default function MISLeadsPage() {
     return initial;
   });
   const [isColumnDropdownOpen, setIsColumnDropdownOpen] = useState(false);
+  const [isManageColumnsModalOpen, setIsManageColumnsModalOpen] = useState(false);
+  const [columnOrder, setColumnOrder] = useState<string[]>(() => TABLE_COLUMNS.map((c) => c.id));
+  const [pinnedColumns, setPinnedColumns] = useState<string[]>([]);
   const [columnSearch, setColumnSearch] = useState("");
   const columnDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -212,6 +251,20 @@ export default function MISLeadsPage() {
       if (saved) {
         const parsed = JSON.parse(saved);
         setVisibleColumns((prev) => ({ ...prev, ...parsed }));
+      }
+      const savedOrder = localStorage.getItem("crm_leads_column_order_mis");
+      if (savedOrder) {
+        try {
+          const parsedOrder = JSON.parse(savedOrder);
+          if (Array.isArray(parsedOrder)) setColumnOrder(parsedOrder);
+        } catch (e) {}
+      }
+      const savedPinned = localStorage.getItem("crm_leads_pinned_columns_mis");
+      if (savedPinned) {
+        try {
+          const parsedPinned = JSON.parse(savedPinned);
+          if (Array.isArray(parsedPinned)) setPinnedColumns(parsedPinned);
+        } catch (e) {}
       }
     } catch (e) {
       // ignore
@@ -254,6 +307,49 @@ export default function MISLeadsPage() {
     setVisibleColumns(updated);
     try {
       localStorage.setItem("crm_leads_visible_columns", JSON.stringify(updated));
+    } catch (e) {}
+  };
+
+  // Calculate dynamic ordered and pinned columns for table header and rows
+  const orderedColumns = useMemo(() => {
+    const all = [...columnOrder];
+    TABLE_COLUMNS.forEach((c) => {
+      if (!all.includes(c.id)) all.push(c.id);
+    });
+    // Pinned columns first, then scrollable columns
+    const pinned = all.filter((id) => pinnedColumns.includes(id) && visibleColumns[id]);
+    const scrollable = all.filter((id) => !pinnedColumns.includes(id) && visibleColumns[id]);
+    return [...pinned, ...scrollable];
+  }, [columnOrder, pinnedColumns, visibleColumns]);
+
+  const handleApplyColumns = (
+    newVisible: Record<string, boolean>,
+    newOrder: string[],
+    newPinned: string[]
+  ) => {
+    setVisibleColumns(newVisible);
+    setColumnOrder(newOrder);
+    setPinnedColumns(newPinned);
+    try {
+      localStorage.setItem("crm_leads_visible_columns", JSON.stringify(newVisible));
+      localStorage.setItem("crm_leads_column_order_mis", JSON.stringify(newOrder));
+      localStorage.setItem("crm_leads_pinned_columns_mis", JSON.stringify(newPinned));
+    } catch (e) {}
+  };
+
+  const handleRestoreDefaultColumns = () => {
+    const defVisible: Record<string, boolean> = {};
+    const defOrder = TABLE_COLUMNS.map((c) => c.id);
+    TABLE_COLUMNS.forEach((c) => {
+      defVisible[c.id] = true;
+    });
+    setVisibleColumns(defVisible);
+    setColumnOrder(defOrder);
+    setPinnedColumns([]);
+    try {
+      localStorage.setItem("crm_leads_visible_columns", JSON.stringify(defVisible));
+      localStorage.removeItem("crm_leads_column_order_mis");
+      localStorage.removeItem("crm_leads_pinned_columns_mis");
     } catch (e) {}
   };
 
@@ -552,11 +648,28 @@ export default function MISLeadsPage() {
     if (filters.validStatus) count++;
     if (filters.appointmentDateFrom || filters.appointmentDateTo) count++;
     if (filters.surgeryDateFrom || filters.surgeryDateTo) count++;
+    if (filters.quickMetricFilter) count++;
     return count;
   }, [filters]);
 
   const filteredLeads = useMemo(() => {
     return leads.filter((lead) => {
+      // 0. Quick Metric Filter (from Dashboard KPI cards)
+      if (filters.quickMetricFilter) {
+        if (filters.quickMetricFilter === "follow_up") {
+          const hasFollowUp = !!(lead.followUpDate && lead.followUpDate.trim()) || !!(lead.followUpDates && lead.followUpDates.trim());
+          if (!hasFollowUp) return false;
+        } else if (filters.quickMetricFilter === "unassigned") {
+          const disp = (lead.dispositions || lead.disposition || "").trim().toLowerCase();
+          const isAssignedCategory =
+            disp === "converted" ||
+            disp === "contacted" ||
+            disp === "contact attempt" ||
+            disp.includes("attempt") ||
+            disp === "closed";
+          if (isAssignedCategory) return false;
+        }
+      }
       // 1. Text Search Query (Supports multiple space-separated numbers/tokens e.g. "9335920357 9810732822 9891707535")
       if (searchQuery.trim()) {
         const tokens = searchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -788,390 +901,54 @@ export default function MISLeadsPage() {
             </div>
           )}
 
-          {/* Search Bar & Advanced Filter Toggle */}
+                    {/* Search Bar & LeadSquared Filters */}
           <div className="space-y-3 shrink-0">
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-              <div className="relative flex-1 max-w-md">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative flex-1 min-w-[280px] max-w-md">
                 <Search className="w-4 h-4 text-gray-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search by Unique ID, Patient Name, Phone, Location..."
-                  className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-black text-xs text-black placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#cc2727]"
+                  className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-black text-xs placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#cc2727] shadow-sm"
                 />
               </div>
 
-              <div className="flex items-center gap-2.5">
-                {/* Advanced Filters Button */}
+              {/* LeadSquared Filter Button & Instant Pinned Filters */}
+              <LeadSquaredFilter
+                filters={filters}
+                updateFilter={updateFilter}
+                handleResetFilters={handleResetFilters}
+                activeFilterCount={activeFilterCount}
+                distinctLocations={distinctLocations}
+                distinctCallers={distinctCallers}
+                distinctLeadSources={distinctLeadSources}
+                distinctTreatments={distinctTreatments}
+                distinctSubDispositions={distinctSubDispositions}
+                storageKeyPrefix="mis"
+              />
+
+              {/* Column Visibility Filter on the far right */}
+              <div className="ml-auto relative z-30">
+                <div className="relative self-end sm:self-auto z-50" ref={columnDropdownRef}>
                 <button
                   type="button"
-                  onClick={() => setIsFilterPanelOpen((prev) => !prev)}
-                  className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold border transition-all ${
-                    isFilterPanelOpen || activeFilterCount > 0
-                      ? "bg-[#cc2727]/20 text-[#cc2727] border-indigo-500/40 shadow-sm"
-                      : "bg-white hover:bg-slate-100 text-black border-slate-200"
-                  }`}
+                  onClick={() => setIsManageColumnsModalOpen(true)}
+                  className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200/80 text-black border border-slate-300 rounded-xl text-xs font-medium transition-all shadow-sm focus:outline-none focus:ring-2 focus:ring-[#cc2727] cursor-pointer"
                 >
-                  <Filter className="w-3.5 h-3.5 text-[#cc2727]" />
-                  <span>Filters</span>
-                  {activeFilterCount > 0 && (
-                    <span className="px-1.5 py-0.5 text-[10px] font-bold bg-[#cc2727] text-black rounded-full">
-                      {activeFilterCount}
-                    </span>
-                  )}
-                  <ChevronDown
-                    className={`w-3.5 h-3.5 text-gray-500 transition-transform ${
-                      isFilterPanelOpen ? "rotate-180" : ""
-                    }`}
-                  />
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-[#cc2727]" />
+                  <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-[#cc2727]/10 text-[#cc2727] rounded-md">
+                    {Object.values(visibleColumns).filter(Boolean).length}/{TABLE_COLUMNS.length}
+                  </span>
                 </button>
 
-                {/* Reset Filters */}
-                {activeFilterCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleResetFilters}
-                    className="flex items-center gap-1.5 px-3 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/20 rounded-xl text-xs font-medium transition-colors"
-                    title="Clear all filters"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Reset</span>
-                  </button>
-                )}
+                
+              </div>
               </div>
             </div>
 
-            {/* Expandable Advanced Filters Panel */}
-            {isFilterPanelOpen && (
-              <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4 animate-in fade-in slide-in-from-top-2 max-h-[35vh] overflow-y-auto shrink-0">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                  <div className="flex items-center gap-2">
-                    <Sliders className="w-4 h-4 text-[#cc2727]" />
-                    <h3 className="text-xs font-bold text-black uppercase tracking-wider">
-                      Advanced Lead Filters
-                    </h3>
-                    {activeFilterCount > 0 && (
-                      <span className="text-xs text-[#cc2727] font-medium">
-                        ({activeFilterCount} active)
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    {activeFilterCount > 0 && (
-                      <button
-                        type="button"
-                        onClick={handleResetFilters}
-                        className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1 font-medium transition-colors"
-                      >
-                        <RotateCcw className="w-3 h-3" />
-                        Clear All
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setIsFilterPanelOpen(false)}
-                      className="text-gray-500 hover:text-black p-1 rounded-lg hover:bg-slate-100 transition-colors"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Grid of 11 Filters */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {/* 1. Lead Entry Date */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-black flex items-center gap-1.5">
-                      <Calendar className="w-3.5 h-3.5 text-[#cc2727]" />
-                      <span>Lead Entry Date</span>
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <span className="block text-[10px] font-semibold text-[#cc2727] uppercase tracking-wider mb-1">
-                          From
-                        </span>
-                        <input
-                          type="date"
-                          value={filters.leadEntryDateFrom}
-                          onChange={(e) => updateFilter("leadEntryDateFrom", e.target.value)}
-                          className="w-full px-2.5 py-2 bg-slate-100 border border-slate-200 hover:border-slate-600 focus:border-[#cc2727] rounded-lg text-xs font-medium text-black [color-scheme:light] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-90 hover:[&::-webkit-calendar-picker-indicator]:opacity-100 focus:outline-none focus:ring-2 focus:ring-[#cc2727] cursor-pointer shadow-sm"
-                          title="Lead Entry From Date"
-                        />
-                      </div>
-                      <div>
-                        <span className="block text-[10px] font-semibold text-[#cc2727] uppercase tracking-wider mb-1">
-                          To
-                        </span>
-                        <input
-                          type="date"
-                          value={filters.leadEntryDateTo}
-                          onChange={(e) => updateFilter("leadEntryDateTo", e.target.value)}
-                          className="w-full px-2.5 py-2 bg-slate-100 border border-slate-200 hover:border-slate-600 focus:border-[#cc2727] rounded-lg text-xs font-medium text-black [color-scheme:light] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-90 hover:[&::-webkit-calendar-picker-indicator]:opacity-100 focus:outline-none focus:ring-2 focus:ring-[#cc2727] cursor-pointer shadow-sm"
-                          title="Lead Entry To Date"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 2. Location */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-black flex items-center gap-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-[#cc2727]" />
-                      <span>Location</span>
-                    </label>
-                    <div className="pt-5">
-                      <select
-                        value={filters.location}
-                        onChange={(e) => updateFilter("location", e.target.value)}
-                        className="w-full px-2.5 py-2 bg-slate-100 border border-slate-200 hover:border-slate-600 rounded-lg text-xs text-black focus:outline-none focus:ring-2 focus:ring-[#cc2727] shadow-sm"
-                      >
-                        <option value="">All Locations</option>
-                        {distinctLocations.map((loc) => (
-                          <option key={loc} value={loc}>
-                            {loc}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* 3. Caller Name */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-black flex items-center gap-1.5">
-                      <User className="w-3.5 h-3.5 text-[#cc2727]" />
-                      <span>Caller Name</span>
-                    </label>
-                    <div className="pt-5">
-                      <select
-                        value={filters.callerName}
-                        onChange={(e) => updateFilter("callerName", e.target.value)}
-                        className="w-full px-2.5 py-2 bg-slate-100 border border-slate-200 hover:border-slate-600 rounded-lg text-xs text-black focus:outline-none focus:ring-2 focus:ring-[#cc2727] shadow-sm"
-                      >
-                        <option value="">All Callers</option>
-                        {distinctCallers.map((caller) => (
-                          <option key={caller} value={caller}>
-                            {caller}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* 4. Lead Source */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-black flex items-center gap-1.5">
-                      <FileText className="w-3.5 h-3.5 text-[#cc2727]" />
-                      <span>Lead Source</span>
-                    </label>
-                    <div className="pt-5">
-                      <select
-                        value={filters.leadSource}
-                        onChange={(e) => updateFilter("leadSource", e.target.value)}
-                        className="w-full px-2.5 py-2 bg-slate-100 border border-slate-200 hover:border-slate-600 rounded-lg text-xs text-black focus:outline-none focus:ring-2 focus:ring-[#cc2727] shadow-sm"
-                      >
-                        <option value="">All Lead Sources</option>
-                        {distinctLeadSources.map((src) => (
-                          <option key={src} value={src}>
-                            {src}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* 5. Treatment */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-black flex items-center gap-1.5">
-                      <Activity className="w-3.5 h-3.5 text-[#cc2727]" />
-                      <span>Treatment Required</span>
-                    </label>
-                    <div className="pt-5">
-                      <select
-                        value={filters.treatment}
-                        onChange={(e) => updateFilter("treatment", e.target.value)}
-                        className="w-full px-2.5 py-2 bg-slate-100 border border-slate-200 hover:border-slate-600 rounded-lg text-xs text-black focus:outline-none focus:ring-2 focus:ring-[#cc2727] shadow-sm"
-                      >
-                        <option value="">All Treatments</option>
-                        {distinctTreatments.map((treat) => (
-                          <option key={treat} value={treat}>
-                            {treat}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* 6. Follow Up Date */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-black flex items-center gap-1.5">
-                      <Calendar className="w-3.5 h-3.5 text-[#cc2727]" />
-                      <span>Follow Up Date</span>
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <span className="block text-[10px] font-semibold text-[#cc2727] uppercase tracking-wider mb-1">
-                          From
-                        </span>
-                        <input
-                          type="date"
-                          value={filters.followUpDateFrom}
-                          onChange={(e) => updateFilter("followUpDateFrom", e.target.value)}
-                          className="w-full px-2.5 py-2 bg-slate-100 border border-slate-200 hover:border-slate-600 focus:border-[#cc2727] rounded-lg text-xs font-medium text-black [color-scheme:light] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-90 hover:[&::-webkit-calendar-picker-indicator]:opacity-100 focus:outline-none focus:ring-2 focus:ring-[#cc2727] cursor-pointer shadow-sm"
-                          title="Follow Up From Date"
-                        />
-                      </div>
-                      <div>
-                        <span className="block text-[10px] font-semibold text-[#cc2727] uppercase tracking-wider mb-1">
-                          To
-                        </span>
-                        <input
-                          type="date"
-                          value={filters.followUpDateTo}
-                          onChange={(e) => updateFilter("followUpDateTo", e.target.value)}
-                          className="w-full px-2.5 py-2 bg-slate-100 border border-slate-200 hover:border-slate-600 focus:border-[#cc2727] rounded-lg text-xs font-medium text-black [color-scheme:light] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-90 hover:[&::-webkit-calendar-picker-indicator]:opacity-100 focus:outline-none focus:ring-2 focus:ring-[#cc2727] cursor-pointer shadow-sm"
-                          title="Follow Up To Date"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 7. Sub Dispositions */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-black flex items-center gap-1.5">
-                      <Stethoscope className="w-3.5 h-3.5 text-[#cc2727]" />
-                      <span>Sub Dispositions</span>
-                    </label>
-                    <div className="pt-5">
-                      <select
-                        value={filters.subDispositions}
-                        onChange={(e) => updateFilter("subDispositions", e.target.value)}
-                        className="w-full px-2.5 py-2 bg-slate-100 border border-slate-200 hover:border-slate-600 rounded-lg text-xs text-black focus:outline-none focus:ring-2 focus:ring-[#cc2727] shadow-sm"
-                      >
-                        <option value="">All Sub Dispositions</option>
-                        {distinctSubDispositions.map((sub) => (
-                          <option key={sub} value={sub}>
-                            {sub}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* 8. Dispositions */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-black flex items-center gap-1.5">
-                      <FolderKanban className="w-3.5 h-3.5 text-[#cc2727]" />
-                      <span>Dispositions</span>
-                    </label>
-                    <div className="pt-5">
-                      <select
-                        value={filters.dispositions}
-                        onChange={(e) => updateFilter("dispositions", e.target.value)}
-                        className="w-full px-2.5 py-2 bg-slate-100 border border-slate-200 hover:border-slate-600 rounded-lg text-xs text-black focus:outline-none focus:ring-2 focus:ring-[#cc2727] shadow-sm"
-                      >
-                        <option value="">All Dispositions</option>
-                        <option value="Converted">Converted</option>
-                        <option value="Contacted">Contacted</option>
-                        <option value="Contact Attempt">Contact Attempt</option>
-                        <option value="Closed">Closed</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* 9. Valid Status */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-black flex items-center gap-1.5">
-                      <CheckCircle className="w-3.5 h-3.5 text-[#cc2727]" />
-                      <span>Valid Status</span>
-                    </label>
-                    <div className="pt-5">
-                      <select
-                        value={filters.validStatus}
-                        onChange={(e) => updateFilter("validStatus", e.target.value)}
-                        className="w-full px-2.5 py-2 bg-slate-100 border border-slate-200 hover:border-slate-600 rounded-lg text-xs text-black focus:outline-none focus:ring-2 focus:ring-[#cc2727] shadow-sm"
-                      >
-                        <option value="">All Statuses</option>
-                        <option value="Valid">Valid</option>
-                        <option value="Invalid">Invalid</option>
-                        <option value="NA">NA</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* 10. Appointment Date */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-black flex items-center gap-1.5">
-                      <Calendar className="w-3.5 h-3.5 text-[#cc2727]" />
-                      <span>Appointment Date</span>
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <span className="block text-[10px] font-semibold text-[#cc2727] uppercase tracking-wider mb-1">
-                          From
-                        </span>
-                        <input
-                          type="date"
-                          value={filters.appointmentDateFrom}
-                          onChange={(e) => updateFilter("appointmentDateFrom", e.target.value)}
-                          className="w-full px-2.5 py-2 bg-slate-100 border border-slate-200 hover:border-slate-600 focus:border-[#cc2727] rounded-lg text-xs font-medium text-black [color-scheme:light] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-90 hover:[&::-webkit-calendar-picker-indicator]:opacity-100 focus:outline-none focus:ring-2 focus:ring-[#cc2727] cursor-pointer shadow-sm"
-                          title="Appointment From Date"
-                        />
-                      </div>
-                      <div>
-                        <span className="block text-[10px] font-semibold text-[#cc2727] uppercase tracking-wider mb-1">
-                          To
-                        </span>
-                        <input
-                          type="date"
-                          value={filters.appointmentDateTo}
-                          onChange={(e) => updateFilter("appointmentDateTo", e.target.value)}
-                          className="w-full px-2.5 py-2 bg-slate-100 border border-slate-200 hover:border-slate-600 focus:border-[#cc2727] rounded-lg text-xs font-medium text-black [color-scheme:light] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-90 hover:[&::-webkit-calendar-picker-indicator]:opacity-100 focus:outline-none focus:ring-2 focus:ring-[#cc2727] cursor-pointer shadow-sm"
-                          title="Appointment To Date"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 11. Surgery Date */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-black flex items-center gap-1.5">
-                      <Calendar className="w-3.5 h-3.5 text-[#cc2727]" />
-                      <span>Surgery Date</span>
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <span className="block text-[10px] font-semibold text-[#cc2727] uppercase tracking-wider mb-1">
-                          From
-                        </span>
-                        <input
-                          type="date"
-                          value={filters.surgeryDateFrom}
-                          onChange={(e) => updateFilter("surgeryDateFrom", e.target.value)}
-                          className="w-full px-2.5 py-2 bg-slate-100 border border-slate-200 hover:border-slate-600 focus:border-[#cc2727] rounded-lg text-xs font-medium text-black [color-scheme:light] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-90 hover:[&::-webkit-calendar-picker-indicator]:opacity-100 focus:outline-none focus:ring-2 focus:ring-[#cc2727] cursor-pointer shadow-sm"
-                          title="Surgery From Date"
-                        />
-                      </div>
-                      <div>
-                        <span className="block text-[10px] font-semibold text-[#cc2727] uppercase tracking-wider mb-1">
-                          To
-                        </span>
-                        <input
-                          type="date"
-                          value={filters.surgeryDateTo}
-                          onChange={(e) => updateFilter("surgeryDateTo", e.target.value)}
-                          className="w-full px-2.5 py-2 bg-slate-100 border border-slate-200 hover:border-slate-600 focus:border-[#cc2727] rounded-lg text-xs font-medium text-black [color-scheme:light] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-90 hover:[&::-webkit-calendar-picker-indicator]:opacity-100 focus:outline-none focus:ring-2 focus:ring-[#cc2727] cursor-pointer shadow-sm"
-                          title="Surgery To Date"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Active Filter Chips */}
+{/* Active Filter Chips */}
             {activeFilterCount > 0 && (
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <span className="text-[11px] font-semibold text-gray-500">Active Filters:</span>
@@ -1303,6 +1080,15 @@ export default function MISLeadsPage() {
                   </span>
                 )}
 
+                {filters.quickMetricFilter && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs bg-[#cc2727]/10 text-[#cc2727] border border-[#cc2727]/20">
+                    <span>Filter: {filters.quickMetricFilter === "follow_up" ? "Follow Up Scheduled" : "Unassigned Leads"}</span>
+                    <button type="button" onClick={() => updateFilter("quickMetricFilter", "")} className="hover:text-black">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+
                 <button
                   type="button"
                   onClick={handleResetFilters}
@@ -1316,99 +1102,7 @@ export default function MISLeadsPage() {
 
           {/* Leads Table Container */}
           <div className="flex-1 flex flex-col min-h-0 bg-white border-t border-x border-slate-200 rounded-t-2xl shadow-sm overflow-hidden relative">
-            <div className="p-4 sm:p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative shrink-0 bg-white z-40">
-              <div>
-                <h2 className="text-base font-bold text-black">Patient Leads</h2>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Click on any patient row to open full details and edit lead information.
-                </p>
-              </div>
-
-              {/* Column Visibility Filter on the far right */}
-              <div className="relative self-end sm:self-auto z-50" ref={columnDropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => setIsColumnDropdownOpen((prev) => !prev)}
-                  className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200/80 text-black border border-slate-300 rounded-xl text-xs font-medium transition-all shadow-sm focus:outline-none focus:ring-2 focus:ring-[#cc2727] cursor-pointer"
-                >
-                  <SlidersHorizontal className="w-3.5 h-3.5 text-[#cc2727]" />
-                  <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-[#cc2727]/10 text-[#cc2727] rounded-md">
-                    {Object.values(visibleColumns).filter(Boolean).length}/{TABLE_COLUMNS.length}
-                  </span>
-                </button>
-
-                {isColumnDropdownOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-72 sm:w-80 bg-white border border-slate-200 rounded-2xl shadow-sm z-50 p-3.5 animate-in fade-in slide-in-from-top-2">
-                    <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-200">
-                      <div>
-                        <h4 className="text-xs font-bold text-black">Select Columns</h4>
-                        <p className="text-[11px] text-gray-500">Toggle which columns are shown</p>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setAllColumns(true)}
-                          className="px-2 py-1 text-[10px] font-medium text-[#cc2727] hover:text-[#b02121] hover:bg-[#cc2727]/10 rounded-md transition-colors"
-                        >
-                          Show All
-                        </button>
-                        <span className="text-black text-xs">|</span>
-                        <button
-                          type="button"
-                          onClick={() => setAllColumns(false)}
-                          className="px-2 py-1 text-[10px] font-medium text-gray-500 hover:text-rose-300 hover:bg-rose-500/10 rounded-md transition-colors"
-                        >
-                          Hide All
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Quick search within columns */}
-                    <div className="relative mb-2">
-                      <Search className="w-3.5 h-3.5 text-gray-600 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        placeholder="Search columns..."
-                        value={columnSearch}
-                        onChange={(e) => setColumnSearch(e.target.value)}
-                        className="w-full pl-8 pr-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] text-black placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-[#cc2727]"
-                      />
-                    </div>
-
-                    {/* Columns checklist */}
-                    <div className="max-h-64 overflow-y-auto space-y-1 pr-1">
-                      {TABLE_COLUMNS.filter((col) =>
-                        col.label.toLowerCase().includes(columnSearch.toLowerCase())
-                      ).map((col) => {
-                        const isVisible = !!visibleColumns[col.id];
-                        return (
-                          <div
-                            key={col.id}
-                            className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs cursor-pointer select-none transition-colors ${
-                              isVisible
-                                ? "bg-[#cc2727]/10 text-black font-medium hover:bg-[#cc2727]/10"
-                                : "text-gray-500 hover:bg-white hover:text-black"
-                            }`}
-                            onClick={() => toggleColumn(col.id)}
-                          >
-                            <span className="truncate pr-2">{col.label}</span>
-                            <div
-                              className={`w-4 h-4 rounded flex items-center justify-center border transition-colors shrink-0 ${
-                                isVisible
-                                  ? "bg-[#cc2727] border-indigo-500 text-black"
-                                  : "border-slate-300 bg-white"
-                              }`}
-                            >
-                              {isVisible && <Check className="w-3 h-3 stroke-[3]" />}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+            
 
             {filteredLeads.length === 0 ? (
               <div className="py-16 text-center">
@@ -1432,155 +1126,25 @@ export default function MISLeadsPage() {
                         Lead ID
                       </th>
 
-                      {/* Patient & Family Profile at Front */}
-                      {visibleColumns.patientName && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Patient Name
-                        </th>
-                      )}
-                      {visibleColumns.patientAge && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Patient Age
-                        </th>
-                      )}
-                      {visibleColumns.location && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Location
-                        </th>
-                      )}
-                      {visibleColumns.spouseName && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Spouse Name
-                        </th>
-                      )}
-                      {visibleColumns.spouseAge && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Spouse Age
-                        </th>
-                      )}
-
-                      {/* Dates & Contacts */}
-                      {visibleColumns.date && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Date (DD-MMM-YY)
-                        </th>
-                      )}
-                      {visibleColumns.leadTimestamp && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Time Stamp (Lead Added)
-                        </th>
-                      )}
-                      {visibleColumns.mobileNumber && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Mobile Number
-                        </th>
-                      )}
-                      {visibleColumns.alternateNumber && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Alternate #
-                        </th>
-                      )}
-                      {visibleColumns.callerName && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Caller Name
-                        </th>
-                      )}
-                      {visibleColumns.leadSource && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Lead Source
-                        </th>
-                      )}
-                      {visibleColumns.referredBy && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Referred By
-                        </th>
-                      )}
-
-                      {/* Clinical & Surgical Details */}
-                      {visibleColumns.lookingForTreatment && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Looking for Treatment
-                        </th>
-                      )}
-                      {visibleColumns.treatmentRequirements && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Treatment Requirements
-                        </th>
-                      )}
-                      {visibleColumns.preConditions && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Pre Conditions
-                        </th>
-                      )}
-                      {visibleColumns.surgeryDetails && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Surgery Details
-                        </th>
-                      )}
-
-                      {/* Section 4 */}
-                      {visibleColumns.followUpDate && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Follow Up Date
-                        </th>
-                      )}
-                      {visibleColumns.subDispositions && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Sub Dispositions
-                        </th>
-                      )}
-                      {visibleColumns.dispositions && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Dispositions
-                        </th>
-                      )}
-                      {visibleColumns.validStatus && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Valid Status
-                        </th>
-                      )}
-                      {visibleColumns.appointmentDate && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Appointment Date
-                        </th>
-                      )}
-                      {visibleColumns.appointmentMonth && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Appointment Month
-                        </th>
-                      )}
-                      {visibleColumns.teleconsultationSlot && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Teleconsultation Slot
-                        </th>
-                      )}
-                      {visibleColumns.consultationCharges && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Consultation Charges
-                        </th>
-                      )}
-                      {visibleColumns.surgeryDate && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Surgery Date
-                        </th>
-                      )}
-                      {visibleColumns.surgeryCost && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Surgery Cost
-                        </th>
-                      )}
-                      {visibleColumns.surgeryPaymentReceived && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20">
-                          Surgery Payment Received
-                        </th>
-                      )}
-
-                      {/* Section 5 */}
-                      {visibleColumns.notes && (
-                        <th scope="col" className="px-4 py-3.5 font-semibold max-w-[200px] sticky top-0 bg-white z-20">
-                          Notes
-                        </th>
-                      )}
+                      {/* Dynamic Ordered & Pinned Column Headers */}
+                      {orderedColumns.map((colId) => {
+                        const colDef = TABLE_COLUMNS.find((c) => c.id === colId);
+                        const isPinned = pinnedColumns.includes(colId);
+                        return (
+                          <th
+                            key={colId}
+                            scope="col"
+                            className={`px-4 py-3.5 font-semibold sticky top-0 bg-white z-20 ${
+                              isPinned ? "border-b-2 border-b-[#cc2727]/30 bg-slate-50/70" : ""
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <span>{colDef?.label || colId}</span>
+                              {isPinned && <span className="text-[10px] text-[#cc2727] font-bold">●</span>}
+                            </div>
+                          </th>
+                        );
+                      })}
 
                       {/* Action */}
                       <th scope="col" className="px-4 py-3.5 font-semibold text-right sticky top-0 right-0 bg-white z-30 shadow-[-2px_0_5px_rgba(0,0,0,0.5)]">
@@ -1611,240 +1175,10 @@ export default function MISLeadsPage() {
                           </div>
                         </td>
 
-                        {/* Patient & Family Profile at Front */}
-                        {/* 2. Patient Name */}
-                        {visibleColumns.patientName && (
-                          <td className="px-4 py-3.5 font-semibold text-black group-hover:text-[#cc2727] transition-colors">
-                            {lead.patientName || "-"}
-                          </td>
-                        )}
-
-                        {/* 3. Patient Age */}
-                        {visibleColumns.patientAge && (
-                          <td className="px-4 py-3.5 font-mono text-black">
-                            {lead.patientAge || "-"}
-                          </td>
-                        )}
-
-                        {/* 4. Location */}
-                        {visibleColumns.location && (
-                          <td className="px-4 py-3.5 text-black">
-                            {lead.location || lead.otherCity || "-"}
-                          </td>
-                        )}
-
-                        {/* 5. Spouse Name */}
-                        {visibleColumns.spouseName && (
-                          <td className="px-4 py-3.5 text-black">
-                            {lead.spouseName || "-"}
-                          </td>
-                        )}
-
-                        {/* 6. Spouse Age */}
-                        {visibleColumns.spouseAge && (
-                          <td className="px-4 py-3.5 font-mono text-gray-500">
-                            {lead.spouseAge || "-"}
-                          </td>
-                        )}
-
-                        {/* Dates & Contacts */}
-                        {/* 7. Date */}
-                        {visibleColumns.date && (
-                          <td className="px-4 py-3.5 font-mono text-black">
-                            {lead.date || lead.dateOfLead || "-"}
-                          </td>
-                        )}
-
-                        {/* 8. Time Stamp (Lead Added) */}
-                        {visibleColumns.leadTimestamp && (
-                          <td className="px-4 py-3.5 font-mono text-[#cc2727] text-[11px]">
-                            {lead.leadTimestamp ||
-                              (lead.createdAt
-                                ? new Date(lead.createdAt).toLocaleString("en-IN", {
-                                    day: "2-digit",
-                                    month: "short",
-                                    year: "2-digit",
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                    hour12: true,
-                                  })
-                                : lead.date || "-")}
-                          </td>
-                        )}
-
-                        {/* 9. Mobile Number */}
-                        {visibleColumns.mobileNumber && (
-                          <td className="px-4 py-3.5 font-mono text-black">
-                            {lead.mobileNumber || lead.phoneNumber || "-"}
-                          </td>
-                        )}
-
-                        {/* 10. Alternate Number */}
-                        {visibleColumns.alternateNumber && (
-                          <td className="px-4 py-3.5 font-mono text-gray-500">
-                            {lead.alternateNumber || "-"}
-                          </td>
-                        )}
-
-                        {/* 11. Caller Name */}
-                        {visibleColumns.callerName && (
-                          <td className="px-4 py-3.5 text-black">
-                            {lead.callerName || "-"}
-                          </td>
-                        )}
-
-                        {/* 12. Lead Source */}
-                        {visibleColumns.leadSource && (
-                          <td className="px-4 py-3.5 text-gray-500">
-                            {lead.leadSource || "-"}
-                          </td>
-                        )}
-
-                        {/* 13. Referred By */}
-                        {visibleColumns.referredBy && (
-                          <td className="px-4 py-3.5 text-gray-500">
-                            {lead.referredBy || "-"}
-                          </td>
-                        )}
-
-                        {/* Clinical & Surgical Details */}
-                        {/* 14. Looking for Treatment */}
-                        {visibleColumns.lookingForTreatment && (
-                          <td className="px-4 py-3.5 text-black font-medium">
-                            {lead.lookingForTreatment || lead.treatmentRequired || lead.treatment || "-"}
-                          </td>
-                        )}
-
-                        {/* 15. Treatment Requirements */}
-                        {visibleColumns.treatmentRequirements && (
-                          <td className="px-4 py-3.5 text-gray-500 truncate max-w-[160px]" title={lead.treatmentRequirements || lead.treatmentRequired}>
-                            {lead.treatmentRequirements || lead.treatmentRequired || "-"}
-                          </td>
-                        )}
-
-                        {/* 16. Pre Conditions */}
-                        {visibleColumns.preConditions && (
-                          <td className="px-4 py-3.5 text-gray-500 truncate max-w-[160px]" title={lead.preConditions || lead.preCondition}>
-                            {lead.preConditions || lead.preCondition || "-"}
-                          </td>
-                        )}
-
-                        {/* 17. Surgery Details */}
-                        {visibleColumns.surgeryDetails && (
-                          <td className="px-4 py-3.5 text-gray-500 truncate max-w-[160px]" title={lead.surgeryDetails || lead.surgicalData}>
-                            {lead.surgeryDetails || lead.surgicalData || "-"}
-                          </td>
-                        )}
-
-                        {/* Section 4: Follow Up, Disposition & Appointments */}
-                        {/* 18. Follow Up Date */}
-                        {visibleColumns.followUpDate && (
-                          <td className="px-4 py-3.5 font-mono text-black">
-                            {lead.followUpDate || lead.followUpDates || "-"}
-                          </td>
-                        )}
-
-                        {/* 19. Sub Dispositions */}
-                        {visibleColumns.subDispositions && (
-                          <td className="px-4 py-3.5 text-black">
-                            {lead.subDispositions || lead.subDisposition || "-"}
-                          </td>
-                        )}
-
-                        {/* 20. Dispositions */}
-                        {visibleColumns.dispositions && (
-                          <td className="px-4 py-3.5">
-                            {lead.dispositions || lead.disposition ? (
-                              <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#cc2727]/10 text-[#cc2727] border border-[#cc2727]/20">
-                                {lead.dispositions || lead.disposition}
-                              </span>
-                            ) : (
-                              "-"
-                            )}
-                          </td>
-                        )}
-
-                        {/* 21. Valid Status */}
-                        {visibleColumns.validStatus && (
-                          <td className="px-4 py-3.5">
-                            {lead.validStatus ? (
-                              <span
-                                className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${
-                                  lead.validStatus === "Valid"
-                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200/20"
-                                    : lead.validStatus === "Invalid"
-                                    ? "bg-rose-500/10 text-rose-300 border-rose-500/20"
-                                    : "bg-slate-700/30 text-gray-500 border-slate-300/50"
-                                }`}
-                              >
-                                {lead.validStatus}
-                              </span>
-                            ) : (
-                              "-"
-                            )}
-                          </td>
-                        )}
-
-                        {/* 22. Appointment Date */}
-                        {visibleColumns.appointmentDate && (
-                          <td className="px-4 py-3.5 font-mono text-black">
-                            {lead.appointmentDate || "-"}
-                          </td>
-                        )}
-
-                        {/* 23. Appointment Month */}
-                        {visibleColumns.appointmentMonth && (
-                          <td className="px-4 py-3.5 font-mono text-gray-500">
-                            {lead.appointmentMonth || "-"}
-                          </td>
-                        )}
-
-                        {/* 24. Teleconsultation Slot */}
-                        {visibleColumns.teleconsultationSlot && (
-                          <td className="px-4 py-3.5 font-mono text-black">
-                            {lead.teleconsultationSlot || lead.appointmentSlot || "-"}
-                          </td>
-                        )}
-
-                        {/* 25. Consultation Charges */}
-                        {visibleColumns.consultationCharges && (
-                          <td className="px-4 py-3.5 font-mono text-emerald-700">
-                            {lead.consultationCharges || lead.teleConsultationCharges
-                              ? `₹${lead.consultationCharges || lead.teleConsultationCharges}`
-                              : "-"}
-                          </td>
-                        )}
-
-                        {/* 26. Surgery Date */}
-                        {visibleColumns.surgeryDate && (
-                          <td className="px-4 py-3.5 font-mono text-black">
-                            {lead.surgeryDate || "-"}
-                          </td>
-                        )}
-
-                        {/* 27. Surgery Cost */}
-                        {visibleColumns.surgeryCost && (
-                          <td className="px-4 py-3.5 font-mono text-[#cc2727] font-semibold">
-                            {lead.surgeryCost ? `₹${lead.surgeryCost}` : "-"}
-                          </td>
-                        )}
-
-                        {/* 28. Surgery Payment Received */}
-                        {visibleColumns.surgeryPaymentReceived && (
-                          <td className="px-4 py-3.5 font-mono text-emerald-700">
-                            {lead.surgeryPaymentReceived || lead.surgeryReceipt
-                              ? `₹${lead.surgeryPaymentReceived || lead.surgeryReceipt}`
-                              : "-"}
-                          </td>
-                        )}
-
-                        {/* Section 5: Notes */}
-                        {/* 29. Notes */}
-                        {visibleColumns.notes && (
-                          <td className="px-4 py-3.5 text-gray-500 truncate max-w-[200px]" title={lead.notes}>
-                            {lead.notes || "-"}
-                          </td>
-                        )}
+                        {/* Dynamic Ordered & Pinned Column Cells */}
+                        {orderedColumns.map((colId) => (
+                          renderLeadTableCell({ colId, lead, leadId })
+                        ))}
 
                         {/* Action Column (Sticky Right) */}
                         <td className="px-4 py-3.5 text-right sticky right-0 bg-white group-hover:bg-slate-100/90 z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.5)]">
@@ -2056,6 +1390,18 @@ export default function MISLeadsPage() {
           </div>
         </div>
       )}
+    
+      {/* Manage Columns LeadSquared Modal */}
+      <ManageColumnsModal
+        isOpen={isManageColumnsModalOpen}
+        onClose={() => setIsManageColumnsModalOpen(false)}
+        allColumns={TABLE_COLUMNS}
+        visibleColumns={visibleColumns}
+        columnOrder={columnOrder}
+        pinnedColumns={pinnedColumns}
+        onApply={handleApplyColumns}
+        onRestoreDefault={handleRestoreDefaultColumns}
+      />
     </div>
   );
 }

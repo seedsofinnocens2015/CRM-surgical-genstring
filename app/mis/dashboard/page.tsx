@@ -29,6 +29,7 @@ import {
   MinusSquare,
   PlusSquare,
   Share2,
+  CalendarClock,
 } from "lucide-react";
 import MISSidebar from "@/app/components/MISSidebar";
 import Footer from "@/app/components/Footer";
@@ -40,6 +41,8 @@ interface Lead {
   uniqueId?: string;
   date?: string;
   month?: string;
+  followUpDate?: string;
+  followUpDates?: string;
   dispositions?: string;
   subDispositions?: string;
   validStatus?: string;
@@ -276,17 +279,26 @@ export default function MISDashboard() {
     });
   }, [leads, selectedMonth]);
 
+  // Helper function to check if lead has follow up scheduled
+  const isFollowUpLead = (lead: Lead) => {
+    return !!(lead.followUpDate && lead.followUpDate.trim()) || !!(lead.followUpDates && lead.followUpDates.trim());
+  };
+
   // Calculate Overall KPI Metrics
   const metrics = useMemo(() => {
     let closed = 0;
     let contactAttempt = 0;
     let contacted = 0;
     let converted = 0;
+    let followUp = 0;
     let other = 0;
 
     const sourceLeads = activeReportTab === "FTD" ? filteredLeads : leads;
 
     sourceLeads.forEach((lead) => {
+      if (isFollowUpLead(lead)) {
+        followUp++;
+      }
       const category = categorizeDisposition(lead.dispositions);
       if (category === "Closed") closed++;
       else if (category === "Contact Attempt") contactAttempt++;
@@ -304,6 +316,7 @@ export default function MISDashboard() {
       contactAttempt,
       contacted,
       converted,
+      followUp,
       other,
       conversionRate,
     };
@@ -321,6 +334,7 @@ export default function MISDashboard() {
         contactAttempt: number;
         contacted: number;
         converted: number;
+        followUp: number;
         grandTotal: number;
       }
     > = {};
@@ -330,6 +344,7 @@ export default function MISDashboard() {
     let totalContactAttempt = 0;
     let totalContacted = 0;
     let totalConverted = 0;
+    let totalFollowUp = 0;
     let grandTotalSum = 0;
 
     filteredLeads.forEach((lead) => {
@@ -343,8 +358,14 @@ export default function MISDashboard() {
           contactAttempt: 0,
           contacted: 0,
           converted: 0,
+          followUp: 0,
           grandTotal: 0,
         };
+      }
+
+      if (isFollowUpLead(lead)) {
+        dateMap[d].followUp++;
+        totalFollowUp++;
       }
 
       const category = categorizeDisposition(lead.dispositions);
@@ -387,6 +408,7 @@ export default function MISDashboard() {
         contactAttempt: totalContactAttempt,
         contacted: totalContacted,
         converted: totalConverted,
+        followUp: totalFollowUp,
         grandTotal: grandTotalSum,
       },
     };
@@ -404,6 +426,7 @@ export default function MISDashboard() {
         contactAttempt: number;
         contacted: number;
         converted: number;
+        followUp: number;
         grandTotal: number;
       }
     > = {};
@@ -413,6 +436,7 @@ export default function MISDashboard() {
     let totalContactAttempt = 0;
     let totalContacted = 0;
     let totalConverted = 0;
+    let totalFollowUp = 0;
     let grandTotalSum = 0;
 
     leads.forEach((lead) => {
@@ -427,8 +451,14 @@ export default function MISDashboard() {
           contactAttempt: 0,
           contacted: 0,
           converted: 0,
+          followUp: 0,
           grandTotal: 0,
         };
+      }
+
+      if (isFollowUpLead(lead)) {
+        monthMap[monthKey].followUp++;
+        totalFollowUp++;
       }
 
       const category = categorizeDisposition(lead.dispositions);
@@ -471,6 +501,7 @@ export default function MISDashboard() {
         contactAttempt: totalContactAttempt,
         contacted: totalContacted,
         converted: totalConverted,
+        followUp: totalFollowUp,
         grandTotal: grandTotalSum,
       },
     };
@@ -1123,6 +1154,7 @@ export default function MISDashboard() {
         "Contact Attempt": r.contactAttempt || "",
         Contacted: r.contacted || "",
         Converted: r.converted || "",
+        "Follow Up": r.followUp || "",
         "Unassigned leads": r.other || "",
         "Grand Total": r.grandTotal,
       }));
@@ -1132,6 +1164,7 @@ export default function MISDashboard() {
         "Contact Attempt": ftdData.totals.contactAttempt || "",
         Contacted: ftdData.totals.contacted || "",
         Converted: ftdData.totals.converted || "",
+        "Follow Up": ftdData.totals.followUp || "",
         "Unassigned leads": ftdData.totals.other || "",
         "Grand Total": ftdData.totals.grandTotal,
       });
@@ -1144,6 +1177,7 @@ export default function MISDashboard() {
         "Contact Attempt": r.contactAttempt || "",
         Contacted: r.contacted || "",
         Converted: r.converted || "",
+        "Follow Up": r.followUp || "",
         "Unassigned leads": r.other || "",
         "Grand Total": r.grandTotal,
       }));
@@ -1153,6 +1187,7 @@ export default function MISDashboard() {
         "Contact Attempt": mtdData.totals.contactAttempt || "",
         Contacted: mtdData.totals.contacted || "",
         Converted: mtdData.totals.converted || "",
+        "Follow Up": mtdData.totals.followUp || "",
         "Unassigned leads": mtdData.totals.other || "",
         "Grand Total": mtdData.totals.grandTotal,
       });
@@ -1432,78 +1467,118 @@ export default function MISDashboard() {
         {/* Dashboard Body */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 min-h-0">
           {/* KPI Metrics Row */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 shrink-0">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 shrink-0">
             {/* Total Leads */}
-            <div className="py-2 px-3 bg-white border border-slate-200 rounded-xl shadow-sm">
+            <Link
+              href="/mis/leads?filter=all"
+              className="py-2 px-3 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-[#cc2727]/50 hover:shadow-md transition-all cursor-pointer group"
+              title="Click to view All Leads"
+            >
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-gray-500">Total Leads</span>
-                <FolderKanban className="w-3.5 h-3.5 text-[#cc2727]" />
+                <span className="text-[11px] font-semibold text-gray-500 group-hover:text-[#cc2727] transition-colors">Total Leads</span>
+                <FolderKanban className="w-3.5 h-3.5 text-[#cc2727] group-hover:scale-110 transition-transform" />
               </div>
               <div className="flex items-baseline justify-between mt-1">
                 <span className="text-lg font-bold text-black font-mono">{metrics.total}</span>
                 <span className="text-[10px] text-gray-600 truncate max-w-[80px]">All records</span>
               </div>
-            </div>
+            </Link>
 
             {/* Converted */}
-            <div className="py-2 px-3 bg-white border border-emerald-200/20 rounded-xl shadow-sm">
+            <Link
+              href="/mis/leads?filter=converted"
+              className="py-2 px-3 bg-white border border-emerald-200/40 rounded-xl shadow-sm hover:border-emerald-500 hover:shadow-md transition-all cursor-pointer group"
+              title="Click to view Converted Leads"
+            >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-emerald-700">Converted</span>
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700 group-hover:scale-110 transition-transform" />
               </div>
               <div className="flex items-baseline justify-between mt-1">
                 <span className="text-lg font-bold text-black font-mono">{metrics.converted}</span>
                 <span className="text-[10px] text-emerald-700/80 font-medium">{metrics.conversionRate}%</span>
               </div>
-            </div>
+            </Link>
 
             {/* Contacted */}
-            <div className="py-2 px-3 bg-white border border-sky-500/20 rounded-xl shadow-sm">
+            <Link
+              href="/mis/leads?filter=contacted"
+              className="py-2 px-3 bg-white border border-sky-500/20 rounded-xl shadow-sm hover:border-sky-500 hover:shadow-md transition-all cursor-pointer group"
+              title="Click to view Contacted Leads"
+            >
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-sky-400">Contacted</span>
-                <PhoneCall className="w-3.5 h-3.5 text-sky-400" />
+                <span className="text-[11px] font-semibold text-sky-600">Contacted</span>
+                <PhoneCall className="w-3.5 h-3.5 text-sky-600 group-hover:scale-110 transition-transform" />
               </div>
               <div className="flex items-baseline justify-between mt-1">
                 <span className="text-lg font-bold text-black font-mono">{metrics.contacted}</span>
                 <span className="text-[10px] text-gray-600 truncate max-w-[80px]">Connected</span>
               </div>
-            </div>
+            </Link>
 
             {/* Contact Attempt */}
-            <div className="py-2 px-3 bg-white border border-amber-500/20 rounded-xl shadow-sm">
+            <Link
+              href="/mis/leads?filter=contact_attempt"
+              className="py-2 px-3 bg-white border border-amber-500/20 rounded-xl shadow-sm hover:border-amber-500 hover:shadow-md transition-all cursor-pointer group"
+              title="Click to view Contact Attempt Leads"
+            >
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-amber-400">Contact Attempt</span>
-                <PhoneForwarded className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-[11px] font-semibold text-amber-600">Contact Attempt</span>
+                <PhoneForwarded className="w-3.5 h-3.5 text-amber-600 group-hover:scale-110 transition-transform" />
               </div>
               <div className="flex items-baseline justify-between mt-1">
                 <span className="text-lg font-bold text-black font-mono">{metrics.contactAttempt}</span>
                 <span className="text-[10px] text-gray-600 truncate max-w-[80px]">Ringing/NA</span>
               </div>
-            </div>
+            </Link>
+
+            {/* Follow Up */}
+            <Link
+              href="/mis/leads?filter=follow_up"
+              className="py-2 px-3 bg-white border border-[#cc2727]/30 rounded-xl shadow-sm hover:border-[#cc2727] hover:shadow-md transition-all cursor-pointer group"
+              title="Click to view Follow Up Leads"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-[#cc2727]">Follow Up</span>
+                <CalendarClock className="w-3.5 h-3.5 text-[#cc2727] group-hover:scale-110 transition-transform" />
+              </div>
+              <div className="flex items-baseline justify-between mt-1">
+                <span className="text-lg font-bold text-black font-mono">{metrics.followUp}</span>
+                <span className="text-[10px] text-gray-600 truncate max-w-[80px]">Scheduled</span>
+              </div>
+            </Link>
 
             {/* Closed */}
-            <div className="py-2 px-3 bg-white border border-rose-500/20 rounded-xl shadow-sm">
+            <Link
+              href="/mis/leads?filter=closed"
+              className="py-2 px-3 bg-white border border-rose-500/20 rounded-xl shadow-sm hover:border-rose-500 hover:shadow-md transition-all cursor-pointer group"
+              title="Click to view Closed Leads"
+            >
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-rose-400">Closed</span>
-                <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                <span className="text-[11px] font-semibold text-rose-600">Closed</span>
+                <XCircle className="w-3.5 h-3.5 text-rose-600 group-hover:scale-110 transition-transform" />
               </div>
               <div className="flex items-baseline justify-between mt-1">
                 <span className="text-lg font-bold text-black font-mono">{metrics.closed}</span>
                 <span className="text-[10px] text-gray-600 truncate max-w-[80px]">Lost/Invalid</span>
               </div>
-            </div>
+            </Link>
 
             {/* Others / Unassigned */}
-            <div className="py-2 px-3 bg-white border border-slate-200 rounded-xl shadow-sm">
+            <Link
+              href="/mis/leads?filter=unassigned"
+              className="py-2 px-3 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-[#cc2727]/50 hover:shadow-md transition-all cursor-pointer group"
+              title="Click to view Unassigned Leads"
+            >
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-gray-500">Unassigned</span>
-                <TrendingUp className="w-3.5 h-3.5 text-gray-600" />
+                <span className="text-[11px] font-semibold text-gray-500 group-hover:text-[#cc2727] transition-colors">Unassigned</span>
+                <TrendingUp className="w-3.5 h-3.5 text-gray-600 group-hover:scale-110 transition-transform" />
               </div>
               <div className="flex items-baseline justify-between mt-1">
                 <span className="text-lg font-bold text-black font-mono">{metrics.other}</span>
                 <span className="text-[10px] text-gray-600 truncate max-w-[80px]">Pending</span>
               </div>
-            </div>
+            </Link>
           </div>
 
           {/* Consolidated 10 Reports Stack */}
@@ -1547,7 +1622,7 @@ export default function MISDashboard() {
                               <div className="text-[11px] text-gray-500 font-normal">Lead Summary FTD</div>
                               <div className="text-sm font-extrabold text-black mt-0.5">Date</div>
                             </th>
-                            <th colSpan={5} className="py-2.5 px-4 text-center font-bold text-[#cc2727] italic tracking-wider bg-white border-r border-slate-200 text-xs">
+                            <th colSpan={6} className="py-2.5 px-4 text-center font-bold text-[#cc2727] italic tracking-wider bg-white border-r border-slate-200 text-xs">
                               Dispositions
                             </th>
                             <th rowSpan={2} className="px-6 py-3 text-right font-extrabold text-black bg-white min-w-[110px]">
@@ -1559,6 +1634,7 @@ export default function MISDashboard() {
                             <th className="px-6 py-2 border-r border-slate-600/50 min-w-[120px]">Contact Attempt</th>
                             <th className="px-6 py-2 border-r border-slate-600/50 min-w-[90px]">Contacted</th>
                             <th className="px-6 py-2 border-r border-slate-600/50 min-w-[90px]">Converted</th>
+                            <th className="px-6 py-2 border-r border-slate-600/50 min-w-[100px] text-white bg-[#cc2727]/90">Follow Up</th>
                             <th className="px-6 py-2 border-r border-slate-600/50 min-w-[120px]">Blank Disposition</th>
                           </tr>
                         </thead>
@@ -1572,6 +1648,7 @@ export default function MISDashboard() {
                               <td className="px-6 py-2.5 border-r border-slate-200/50 text-black">{row.contactAttempt > 0 ? row.contactAttempt : ""}</td>
                               <td className="px-6 py-2.5 border-r border-slate-200/50 text-black">{row.contacted > 0 ? row.contacted : ""}</td>
                               <td className="px-6 py-2.5 border-r border-slate-200/50 text-[#cc2727] font-semibold">{row.converted > 0 ? row.converted : ""}</td>
+                              <td className="px-6 py-2.5 border-r border-slate-200/50 text-[#cc2727] font-bold bg-[#cc2727]/5">{row.followUp > 0 ? row.followUp : ""}</td>
                               <td className="px-6 py-2.5 border-r border-slate-200/50 text-amber-700 font-semibold">{row.other > 0 ? row.other : ""}</td>
                               <td className="px-6 py-2.5 text-right font-bold text-black group-hover:text-[#cc2727]">{row.grandTotal}</td>
                             </tr>
@@ -1584,6 +1661,7 @@ export default function MISDashboard() {
                             <td className="px-6 py-3.5 border-r border-slate-200 text-black">{ftdData.totals.contactAttempt}</td>
                             <td className="px-6 py-3.5 border-r border-slate-200 text-black">{ftdData.totals.contacted}</td>
                             <td className="px-6 py-3.5 border-r border-slate-200 text-[#cc2727] font-extrabold">{ftdData.totals.converted}</td>
+                            <td className="px-6 py-3.5 border-r border-slate-200 text-[#cc2727] font-extrabold bg-[#cc2727]/5">{ftdData.totals.followUp}</td>
                             <td className="px-6 py-3.5 border-r border-slate-200 text-amber-700 font-extrabold">{ftdData.totals.other}</td>
                             <td className="px-6 py-3.5 text-right text-sm font-extrabold text-[#cc2727]">{ftdData.totals.grandTotal}</td>
                           </tr>
@@ -1617,7 +1695,7 @@ export default function MISDashboard() {
                               <div className="text-[11px] text-gray-500 font-normal">Lead Summary MTD</div>
                               <div className="text-sm font-extrabold text-black mt-0.5">Month</div>
                             </th>
-                            <th colSpan={5} className="py-2.5 px-4 text-center font-bold text-[#cc2727] italic tracking-wider bg-white border-r border-slate-200 text-xs">
+                            <th colSpan={6} className="py-2.5 px-4 text-center font-bold text-[#cc2727] italic tracking-wider bg-white border-r border-slate-200 text-xs">
                               Dispositions
                             </th>
                             <th rowSpan={2} className="px-6 py-3 text-right font-extrabold text-black bg-white min-w-[110px]">
@@ -1629,6 +1707,7 @@ export default function MISDashboard() {
                             <th className="px-6 py-2 border-r border-slate-600/50 min-w-[120px]">Contact Attempt</th>
                             <th className="px-6 py-2 border-r border-slate-600/50 min-w-[90px]">Contacted</th>
                             <th className="px-6 py-2 border-r border-slate-600/50 min-w-[90px]">Converted</th>
+                            <th className="px-6 py-2 border-r border-slate-600/50 min-w-[100px] text-white bg-[#cc2727]/90">Follow Up</th>
                             <th className="px-6 py-2 border-r border-slate-600/50 min-w-[120px]">Blank Disposition</th>
                           </tr>
                         </thead>
@@ -1642,6 +1721,7 @@ export default function MISDashboard() {
                               <td className="px-6 py-3.5 border-r border-slate-200/50 text-black">{row.contactAttempt > 0 ? row.contactAttempt : ""}</td>
                               <td className="px-6 py-3.5 border-r border-slate-200/50 text-black">{row.contacted > 0 ? row.contacted : ""}</td>
                               <td className="px-6 py-3.5 border-r border-slate-200/50 text-[#cc2727] font-semibold">{row.converted > 0 ? row.converted : ""}</td>
+                              <td className="px-6 py-3.5 border-r border-slate-200/50 text-[#cc2727] font-bold bg-[#cc2727]/5">{row.followUp > 0 ? row.followUp : ""}</td>
                               <td className="px-6 py-3.5 border-r border-slate-200/50 text-amber-700 font-semibold">{row.other > 0 ? row.other : ""}</td>
                               <td className="px-6 py-3.5 text-right font-extrabold text-black group-hover:text-[#cc2727]">{row.grandTotal}</td>
                             </tr>
@@ -1654,6 +1734,7 @@ export default function MISDashboard() {
                             <td className="px-6 py-3.5 border-r border-slate-200 text-black">{mtdData.totals.contactAttempt}</td>
                             <td className="px-6 py-3.5 border-r border-slate-200 text-black">{mtdData.totals.contacted}</td>
                             <td className="px-6 py-3.5 border-r border-slate-200 text-[#cc2727] font-extrabold">{mtdData.totals.converted}</td>
+                            <td className="px-6 py-3.5 border-r border-slate-200 text-[#cc2727] font-extrabold bg-[#cc2727]/5">{mtdData.totals.followUp}</td>
                             <td className="px-6 py-3.5 border-r border-slate-200 text-amber-700 font-extrabold">{mtdData.totals.other}</td>
                             <td className="px-6 py-3.5 text-right text-sm font-extrabold text-[#cc2727]">{mtdData.totals.grandTotal}</td>
                           </tr>

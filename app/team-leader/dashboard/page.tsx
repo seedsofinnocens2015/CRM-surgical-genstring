@@ -18,6 +18,7 @@ import {
   UserCheck,
   UserX,
   ChevronRight,
+  CalendarClock,
 } from "lucide-react";
 
 interface Lead {
@@ -25,6 +26,8 @@ interface Lead {
   uniqueId?: string;
   date?: string;
   month?: string;
+  followUpDate?: string;
+  followUpDates?: string;
   dispositions?: string;
   subDispositions?: string;
   validStatus?: string;
@@ -185,9 +188,15 @@ export default function TeamLeaderDashboard() {
     let contactAttempt = 0;
     let contacted = 0;
     let converted = 0;
+    let followUp = 0;
     let other = 0;
 
     leads.forEach((lead) => {
+      const isFollowUp = !!(lead.followUpDate && lead.followUpDate.trim()) || !!(lead.followUpDates && lead.followUpDates.trim());
+      if (isFollowUp) {
+        followUp++;
+      }
+
       const category = categorizeDisposition(lead.dispositions);
       if (category === "Closed") closed++;
       else if (category === "Contact Attempt") contactAttempt++;
@@ -206,6 +215,7 @@ export default function TeamLeaderDashboard() {
       contactAttempt,
       contacted,
       converted,
+      followUp,
       other,
       conversionRate,
     };
@@ -301,14 +311,18 @@ export default function TeamLeaderDashboard() {
               </Link>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-4">
               {/* Total Leads */}
-              <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-2xl shadow-lg hover:border-slate-300 transition-all flex flex-col justify-between">
+              <Link
+                href="/team-leader/leads?filter=all"
+                className="p-4 sm:p-5 bg-white border border-slate-200 rounded-2xl shadow-lg hover:border-[#cc2727]/50 hover:shadow-xl transition-all flex flex-col justify-between cursor-pointer group"
+                title="Click to view All Leads"
+              >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-gray-500">
+                  <span className="text-xs font-semibold text-gray-500 group-hover:text-[#cc2727] transition-colors">
                     Total Leads
                   </span>
-                  <div className="p-2 rounded-xl bg-[#cc2727]/10 text-[#cc2727] border border-[#cc2727]/20">
+                  <div className="p-2 rounded-xl bg-[#cc2727]/10 text-[#cc2727] border border-[#cc2727]/20 group-hover:scale-110 transition-transform">
                     <FolderKanban className="w-4 h-4" />
                   </div>
                 </div>
@@ -320,15 +334,19 @@ export default function TeamLeaderDashboard() {
                     All recorded leads
                   </p>
                 </div>
-              </div>
+              </Link>
 
               {/* Converted */}
-              <div className="p-4 sm:p-5 bg-white border border-emerald-200/20 rounded-2xl shadow-lg hover:border-emerald-200/30 transition-all flex flex-col justify-between">
+              <Link
+                href="/team-leader/leads?filter=converted"
+                className="p-4 sm:p-5 bg-white border border-emerald-200/40 rounded-2xl shadow-lg hover:border-emerald-500 hover:shadow-xl transition-all flex flex-col justify-between cursor-pointer group"
+                title="Click to view Converted Leads"
+              >
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-emerald-700">
                     Converted
                   </span>
-                  <div className="p-2 rounded-xl bg-[#cc2727]/10 text-[#cc2727] border border-[#cc2727]/20">
+                  <div className="p-2 rounded-xl bg-[#cc2727]/10 text-[#cc2727] border border-[#cc2727]/20 group-hover:scale-110 transition-transform">
                     <CheckCircle2 className="w-4 h-4" />
                   </div>
                 </div>
@@ -340,15 +358,19 @@ export default function TeamLeaderDashboard() {
                     {leadMetrics.conversionRate}% Conversion Rate
                   </p>
                 </div>
-              </div>
+              </Link>
 
               {/* Contacted */}
-              <div className="p-4 sm:p-5 bg-white border border-sky-500/20 rounded-2xl shadow-lg hover:border-sky-500/30 transition-all flex flex-col justify-between">
+              <Link
+                href="/team-leader/leads?filter=contacted"
+                className="p-4 sm:p-5 bg-white border border-sky-500/20 rounded-2xl shadow-lg hover:border-sky-500 hover:shadow-xl transition-all flex flex-col justify-between cursor-pointer group"
+                title="Click to view Contacted Leads"
+              >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-sky-400">
+                  <span className="text-xs font-semibold text-sky-600">
                     Contacted
                   </span>
-                  <div className="p-2 rounded-xl bg-sky-50 text-sky-700 border border-sky-200">
+                  <div className="p-2 rounded-xl bg-sky-50 text-sky-700 border border-sky-200 group-hover:scale-110 transition-transform">
                     <PhoneCall className="w-4 h-4" />
                   </div>
                 </div>
@@ -360,15 +382,19 @@ export default function TeamLeaderDashboard() {
                     Successfully connected
                   </p>
                 </div>
-              </div>
+              </Link>
 
               {/* Contact Attempt */}
-              <div className="p-4 sm:p-5 bg-white border border-amber-500/20 rounded-2xl shadow-lg hover:border-amber-500/30 transition-all flex flex-col justify-between">
+              <Link
+                href="/team-leader/leads?filter=contact_attempt"
+                className="p-4 sm:p-5 bg-white border border-amber-500/20 rounded-2xl shadow-lg hover:border-amber-500 hover:shadow-xl transition-all flex flex-col justify-between cursor-pointer group"
+                title="Click to view Contact Attempt Leads"
+              >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-amber-400">
+                  <span className="text-xs font-semibold text-amber-600">
                     Contact Attempt
                   </span>
-                  <div className="p-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-200">
+                  <div className="p-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 group-hover:scale-110 transition-transform">
                     <PhoneForwarded className="w-4 h-4" />
                   </div>
                 </div>
@@ -380,15 +406,43 @@ export default function TeamLeaderDashboard() {
                     Ringing / Not reachable
                   </p>
                 </div>
-              </div>
+              </Link>
+
+              {/* Follow Up */}
+              <Link
+                href="/team-leader/leads?filter=follow_up"
+                className="p-4 sm:p-5 bg-white border border-[#cc2727]/30 rounded-2xl shadow-lg hover:border-[#cc2727] hover:shadow-xl transition-all flex flex-col justify-between cursor-pointer group"
+                title="Click to view Follow Up Leads"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-[#cc2727]">
+                    Follow Up
+                  </span>
+                  <div className="p-2 rounded-xl bg-[#cc2727]/10 text-[#cc2727] border border-[#cc2727]/20 group-hover:scale-110 transition-transform">
+                    <CalendarClock className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <span className="text-2xl sm:text-3xl font-extrabold text-black font-mono tracking-tight">
+                    {leadMetrics.followUp}
+                  </span>
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    Follow-up scheduled
+                  </p>
+                </div>
+              </Link>
 
               {/* Closed */}
-              <div className="p-4 sm:p-5 bg-white border border-rose-500/20 rounded-2xl shadow-lg hover:border-rose-500/30 transition-all flex flex-col justify-between">
+              <Link
+                href="/team-leader/leads?filter=closed"
+                className="p-4 sm:p-5 bg-white border border-rose-500/20 rounded-2xl shadow-lg hover:border-rose-500 hover:shadow-xl transition-all flex flex-col justify-between cursor-pointer group"
+                title="Click to view Closed Leads"
+              >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-rose-400">
+                  <span className="text-xs font-semibold text-rose-600">
                     Closed
                   </span>
-                  <div className="p-2 rounded-xl bg-rose-50 text-rose-700 border border-rose-200">
+                  <div className="p-2 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 group-hover:scale-110 transition-transform">
                     <XCircle className="w-4 h-4" />
                   </div>
                 </div>
@@ -400,15 +454,19 @@ export default function TeamLeaderDashboard() {
                     Lost / Invalid leads
                   </p>
                 </div>
-              </div>
+              </Link>
 
               {/* Others / Unassigned */}
-              <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-2xl shadow-lg hover:border-slate-300 transition-all flex flex-col justify-between">
+              <Link
+                href="/team-leader/leads?filter=unassigned"
+                className="p-4 sm:p-5 bg-white border border-slate-200 rounded-2xl shadow-lg hover:border-[#cc2727]/50 hover:shadow-xl transition-all flex flex-col justify-between cursor-pointer group"
+                title="Click to view Unassigned Leads"
+              >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-gray-500">
+                  <span className="text-xs font-semibold text-gray-500 group-hover:text-[#cc2727] transition-colors">
                     Unassigned
                   </span>
-                  <div className="p-2 rounded-xl bg-slate-100 text-black border border-slate-300">
+                  <div className="p-2 rounded-xl bg-slate-100 text-black border border-slate-300 group-hover:scale-110 transition-transform">
                     <TrendingUp className="w-4 h-4" />
                   </div>
                 </div>
@@ -420,7 +478,7 @@ export default function TeamLeaderDashboard() {
                     Pending / In pipeline
                   </p>
                 </div>
-              </div>
+              </Link>
             </div>
           </div>
 
