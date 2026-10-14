@@ -388,7 +388,7 @@ export default function AdminDashboard() {
 
   // Calculate Overall KPI Metrics
   const metrics = useMemo(() => {
-    if (serverStats?.metrics && activeReportTab !== "FTD") {
+    if (serverStats?.metrics) {
       return serverStats.metrics;
     }
     let closed = 0;
