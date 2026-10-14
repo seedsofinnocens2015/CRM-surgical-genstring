@@ -389,7 +389,7 @@ export default function MarketingDashboard() {
 
   // Calculate Overall KPI Metrics
   const metrics = useMemo(() => {
-    if (serverStats?.metrics) {
+    if (serverStats?.metrics && activeReportTab !== "FTD") {
       return serverStats.metrics;
     }
     let closed = 0;
@@ -521,10 +521,13 @@ export default function MarketingDashboard() {
         grandTotal: grandTotalSum,
       },
     };
-  }, [filteredLeads]);
+  }, [filteredLeads, serverStats]);
 
   // 2. Build Lead Summary MTD (Month-wise Pivot Matrix - Screenshot 2)
   const mtdData = useMemo(() => {
+    if (serverStats?.mtdData) {
+      return serverStats.mtdData;
+    }
     const monthMap: Record<
       string,
       {
@@ -614,10 +617,13 @@ export default function MarketingDashboard() {
         grandTotal: grandTotalSum,
       },
     };
-  }, [leads]);
+  }, [leads, serverStats]);
 
   // 3. Build Valid Summary (Month-wise Valid Status Matrix - Screenshot 3)
   const validSummaryData = useMemo(() => {
+    if (serverStats?.validSummaryData) {
+      return serverStats.validSummaryData;
+    }
     const monthMap: Record<
       string,
       {
@@ -690,10 +696,13 @@ export default function MarketingDashboard() {
         validPercent: totalValidPercent,
       },
     };
-  }, [leads]);
+  }, [leads, serverStats]);
 
   // 4. Build Appointment Date Summary (Count & Collections with Location - Screenshot 4)
   const appointmentDateData = useMemo(() => {
+    if (serverStats?.appointmentDateData) {
+      return serverStats.appointmentDateData;
+    }
     const dateMap: Record<
       string,
       {
@@ -756,10 +765,13 @@ export default function MarketingDashboard() {
         collections: totalCollections,
       },
     };
-  }, [leads, selectedMonth, selectedLocation]);
+  }, [leads, selectedMonth, selectedLocation, serverStats]);
 
   // 5. Build Appointment Month Summary (Count & Collections - Screenshot 3)
   const appointmentMonthData = useMemo(() => {
+    if (serverStats?.appointmentMonthData) {
+      return serverStats.appointmentMonthData;
+    }
     const monthMap: Record<
       string,
       {
@@ -816,10 +828,13 @@ export default function MarketingDashboard() {
         collections: totalCollections,
       },
     };
-  }, [leads, selectedLocation]);
+  }, [leads, selectedLocation, serverStats]);
 
   // 6. Build Surgery Month Summary (Count & Surgery - Payment Received - Screenshot 5)
   const surgeryMonthData = useMemo(() => {
+    if (serverStats?.surgeryMonthData) {
+      return serverStats.surgeryMonthData;
+    }
     const monthMap: Record<
       string,
       {
@@ -877,10 +892,13 @@ export default function MarketingDashboard() {
         paymentReceived: totalPaymentReceived,
       },
     };
-  }, [leads, selectedLocation]);
+  }, [leads, selectedLocation, serverStats]);
 
   // 7. Build Surgery Date Summary (Date-wise Count & Surgery - Payment Received with Location - Screenshot 6)
   const surgeryDateData = useMemo(() => {
+    if (serverStats?.surgeryDateData) {
+      return serverStats.surgeryDateData;
+    }
     const dateMap: Record<
       string,
       {
@@ -945,10 +963,13 @@ export default function MarketingDashboard() {
         paymentReceived: totalPaymentReceived,
       },
     };
-  }, [leads, selectedMonth, selectedLocation]);
+  }, [leads, selectedMonth, selectedLocation, serverStats]);
 
   // 8. Build Call Summary (Month-wise Enquiry, Valid, Converted, %, Collections - Screenshot 7)
   const callSummaryData = useMemo(() => {
+    if (serverStats?.callSummaryData) {
+      return serverStats.callSummaryData;
+    }
     const monthMap: Record<
       string,
       {
@@ -1079,10 +1100,13 @@ export default function MarketingDashboard() {
         totalCollections: grandTotalCollections,
       },
     };
-  }, [leads, selectedLocation]);
+  }, [leads, selectedLocation, serverStats]);
 
   // 9. Build Sub-Disposition Summary (Hierarchical Pivot Matrix - Screenshot 8)
   const subDispData = useMemo(() => {
+    if (serverStats?.subDispData) {
+      return serverStats.subDispData;
+    }
     let sourceLeads = leads;
     if (selectedLocation !== "All") {
       sourceLeads = sourceLeads.filter(
@@ -1194,10 +1218,13 @@ export default function MarketingDashboard() {
       grandTotals,
       overallGrandTotal,
     };
-  }, [leads, selectedLocation]);
+  }, [leads, selectedLocation, serverStats]);
 
   // 10. Build Lead Source Summary (Month-wise Lead Source Count - Screenshot 9)
   const leadSourceData = useMemo(() => {
+    if (serverStats?.leadSourceData) {
+      return serverStats.leadSourceData;
+    }
     let sourceLeads = leads;
     if (selectedLocation !== "All") {
       sourceLeads = sourceLeads.filter(
@@ -1250,7 +1277,7 @@ export default function MarketingDashboard() {
       groups,
       grandTotal: grandTotalCount,
     };
-  }, [leads, selectedLocation]);
+  }, [leads, selectedLocation, serverStats]);
 
   // Export Active Table to Excel
   const handleExportExcel = () => {

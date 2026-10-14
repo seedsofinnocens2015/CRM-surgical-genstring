@@ -136,14 +136,15 @@ export async function GET(req: Request) {
       );
     }
 
-    // Server-side pagination parameters
-    // Default page is 1. If limit is explicitly "all", allow full retrieval for exports/bulk update.
-    // Otherwise default limit to 100 per page.
-    const isExplicitAll = limitParam === "all" || limitParam === "0";
+    // Pagination parameters
+    // If limit is not specified or is "all" or "0", return all leads so client-side table
+    // has the full dataset for instant searching, filtering, and 100-per-page windowing.
+    // If an explicit numeric limit is specified (e.g. limit=50), apply server pagination.
+    const hasExplicitNumericLimit = limitParam !== null && limitParam !== "" && limitParam !== "all" && limitParam !== "0";
     const page = Math.max(parseInt(pageParam || "1", 10) || 1, 1);
-    const limit = isExplicitAll
-      ? 0
-      : Math.min(Math.max(parseInt(limitParam || "100", 10) || 100, 1), 500);
+    const limit = hasExplicitNumericLimit
+      ? Math.min(Math.max(parseInt(limitParam, 10) || 100, 1), 1000)
+      : 0;
 
     const skip = limit > 0 ? (page - 1) * limit : 0;
 

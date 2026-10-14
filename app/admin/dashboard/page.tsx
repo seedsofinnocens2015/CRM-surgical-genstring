@@ -388,7 +388,7 @@ export default function AdminDashboard() {
 
   // Calculate Overall KPI Metrics
   const metrics = useMemo(() => {
-    if (serverStats?.metrics) {
+    if (serverStats?.metrics && activeReportTab !== "FTD") {
       return serverStats.metrics;
     }
     let closed = 0;
@@ -695,7 +695,7 @@ export default function AdminDashboard() {
         validPercent: totalValidPercent,
       },
     };
-  }, [leads]);
+  }, [leads, serverStats]);
 
   // 4. Build Appointment Date Summary (Count & Collections with Location - Screenshot 4)
   const appointmentDateData = useMemo(() => {
@@ -764,7 +764,7 @@ export default function AdminDashboard() {
         collections: totalCollections,
       },
     };
-  }, [leads, selectedMonth, selectedLocation]);
+  }, [leads, selectedMonth, selectedLocation, serverStats]);
 
   // 5. Build Appointment Month Summary (Count & Collections - Screenshot 3)
   const appointmentMonthData = useMemo(() => {
@@ -827,7 +827,7 @@ export default function AdminDashboard() {
         collections: totalCollections,
       },
     };
-  }, [leads, selectedLocation]);
+  }, [leads, selectedLocation, serverStats]);
 
   // 6. Build Surgery Month Summary (Count & Surgery - Payment Received - Screenshot 5)
   const surgeryMonthData = useMemo(() => {
@@ -891,7 +891,7 @@ export default function AdminDashboard() {
         paymentReceived: totalPaymentReceived,
       },
     };
-  }, [leads, selectedLocation]);
+  }, [leads, selectedLocation, serverStats]);
 
   // 7. Build Surgery Date Summary (Date-wise Count & Surgery - Payment Received with Location - Screenshot 6)
   const surgeryDateData = useMemo(() => {
@@ -962,7 +962,7 @@ export default function AdminDashboard() {
         paymentReceived: totalPaymentReceived,
       },
     };
-  }, [leads, selectedMonth, selectedLocation]);
+  }, [leads, selectedMonth, selectedLocation, serverStats]);
 
   // 8. Build Call Summary (Month-wise Enquiry, Valid, Converted, %, Collections - Screenshot 7)
   const callSummaryData = useMemo(() => {
@@ -1099,7 +1099,7 @@ export default function AdminDashboard() {
         totalCollections: grandTotalCollections,
       },
     };
-  }, [leads, selectedLocation]);
+  }, [leads, selectedLocation, serverStats]);
 
   // 9. Build Sub-Disposition Summary (Hierarchical Pivot Matrix - Screenshot 8)
   const subDispData = useMemo(() => {
@@ -1217,7 +1217,7 @@ export default function AdminDashboard() {
       grandTotals,
       overallGrandTotal,
     };
-  }, [leads, selectedLocation]);
+  }, [leads, selectedLocation, serverStats]);
 
   // 10. Build Lead Source Summary (Month-wise Lead Source Count - Screenshot 9)
   const leadSourceData = useMemo(() => {
@@ -1276,7 +1276,7 @@ export default function AdminDashboard() {
       groups,
       grandTotal: grandTotalCount,
     };
-  }, [leads, selectedLocation]);
+  }, [leads, selectedLocation, serverStats]);
 
   // Export Active Table to Excel
   const handleExportExcel = () => {
