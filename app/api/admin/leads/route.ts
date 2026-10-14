@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { connectDB } from "@/lib/mongodb";
 import { Lead } from "@/models/Lead";
 import { getFormattedTimestamp, getTodayDDMMMYY } from "@/lib/leadOptions";
+import { invalidateDashboardCache } from "@/lib/cacheInvalidation";
 
 export const dynamic = "force-dynamic";
 
@@ -53,8 +54,15 @@ async function getNextUniqueId(): Promise<string> {
   return `SC-${maxNum + 1}`;
 }
 
-// GET /api/admin/leads - Fetch all leads (lean & projected)
+// Table columns projection: excludes heavy auditLogs, notesHistory, and unnecessary nested data
+const TABLE_VIEW_PROJECTION = {
+  auditLogs: 0,
+  notesHistory: 0,
+};
+
+// GET /api/admin/leads - Fetch leads with server-side pagination and projection
 export async function GET(req: Request) {
+  const startTime = Date.now();
   try {
     const session = await verifyAuth();
     if (!session) {
@@ -67,8 +75,9 @@ export async function GET(req: Request) {
     await connectDB();
 
     const { searchParams } = new URL(req.url);
+    const view = searchParams.get("view"); // e.g. "dashboard" or "table"
+    const pageParam = searchParams.get("page");
     const limitParam = searchParams.get("limit");
-    const limit = limitParam ? Math.min(Math.max(parseInt(limitParam, 10) || 50, 1), 5000) : 0;
 
     // If agent, strictly restrict leads to only those assigned to this agent by callerName
     let query: any = {};
@@ -79,29 +88,99 @@ export async function GET(req: Request) {
       };
     }
 
-    // High performance query: Exclude heavy auditLogs and notesHistory from list view
+    // Special lightweight view for dashboard calculations
+    if (view === "dashboard") {
+      const dashboardProjection = {
+        uniqueId: 1,
+        patientName: 1,
+        mobileNumber: 1,
+        callerName: 1,
+        month: 1,
+        date: 1,
+        appointmentMonth: 1,
+        appointmentDate: 1,
+        surgeryMonth: 1,
+        surgeryDate: 1,
+        surgeryCost: 1,
+        location: 1,
+        otherCity: 1,
+        lookingForTreatment: 1,
+        teleconsultationSlot: 1,
+        assignedDate: 1,
+        assignedAt: 1,
+        createdAt: 1,
+        followUpDate: 1,
+        followUpDates: 1,
+        dispositions: 1,
+        validStatus: 1,
+        consultationCharges: 1,
+        surgeryPaymentReceived: 1,
+        subDispositions: 1,
+        leadSource: 1,
+        leadTimestamp: 1,
+        auditLogs: 1,
+      };
+
+      const leads = await Lead.find(query)
+        .select(dashboardProjection)
+        .sort({ createdAt: -1 })
+        .lean();
+
+      return NextResponse.json(
+        { leads, totalCount: leads.length },
+        {
+          headers: {
+            "Cache-Control": "no-store, max-age=0",
+          },
+        }
+      );
+    }
+
+    // Server-side pagination parameters
+    // Default page is 1. If limit is explicitly "all", allow full retrieval for exports/bulk update.
+    // Otherwise default limit to 100 per page.
+    const isExplicitAll = limitParam === "all" || limitParam === "0";
+    const page = Math.max(parseInt(pageParam || "1", 10) || 1, 1);
+    const limit = isExplicitAll
+      ? 0
+      : Math.min(Math.max(parseInt(limitParam || "100", 10) || 100, 1), 500);
+
+    const skip = limit > 0 ? (page - 1) * limit : 0;
+
     let leadQuery = Lead.find(query)
-      .select({ auditLogs: 0, notesHistory: 0 })
+      .select(TABLE_VIEW_PROJECTION)
       .sort({ createdAt: -1 })
       .lean();
 
     if (limit > 0) {
-      leadQuery = leadQuery.limit(limit);
+      leadQuery = leadQuery.skip(skip).limit(limit);
     }
 
-    const [leads, nextUniqueId] = await Promise.all([
+    const [leads, totalCount, nextUniqueId] = await Promise.all([
       leadQuery,
+      Lead.countDocuments(query),
       getNextUniqueId(),
     ]);
 
-    return NextResponse.json(
-      { leads, nextUniqueId },
+    const totalPages = limit > 0 ? Math.max(1, Math.ceil(totalCount / limit)) : 1;
+
+    const response = NextResponse.json(
+      {
+        leads,
+        totalCount,
+        page,
+        limit: limit > 0 ? limit : totalCount,
+        totalPages,
+        nextUniqueId,
+      },
       {
         headers: {
           "Cache-Control": "no-store, max-age=0",
+          "X-Response-Time": `${Date.now() - startTime}ms`,
         },
       }
     );
+    return response;
   } catch (error: any) {
     console.error("Error fetching leads:", error);
     return NextResponse.json(
@@ -223,6 +302,9 @@ export async function POST(req: Request) {
         : {}),
       createdBy: session.id || null,
     });
+
+    // Invalidate dashboard stats cache immediately upon lead creation
+    invalidateDashboardCache();
 
     return NextResponse.json(
       { message: "Lead created successfully", lead: newLead },

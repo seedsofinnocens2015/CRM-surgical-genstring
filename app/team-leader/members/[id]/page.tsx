@@ -164,7 +164,7 @@ function getTodayISODate(): string {
 
   const refreshLeads = async () => {
     try {
-      const leadsRes = await fetch("/api/admin/leads", { cache: "no-store" });
+      const leadsRes = await fetch("/api/admin/leads?limit=all", { cache: "no-store" });
       if (leadsRes.ok) {
         const ld = await leadsRes.json();
         setAllLeads(ld.leads || []);

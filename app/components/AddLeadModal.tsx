@@ -169,16 +169,6 @@ export default function AddLeadModal({
 
         if (existingLeads && existingLeads.length > 0) {
           setLeadsCache(existingLeads);
-        } else {
-          try {
-            const leadsRes = await fetch("/api/admin/leads");
-            if (leadsRes.ok) {
-              const data = await leadsRes.json();
-              setLeadsCache(data.leads || []);
-            }
-          } catch {
-            // fallback
-          }
         }
       };
       fetchCallersAndLeads();
@@ -186,27 +176,107 @@ export default function AddLeadModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, suggestedUniqueId, defaultCallerName]);
 
-  // Real-time phone duplication matching
-  // Matches any lead where either mobileNumber or alternateNumber contains/starts-with the entered digits
+  // Keep local leadsCache in sync if existingLeads prop changes while open
+  useEffect(() => {
+    if (existingLeads && existingLeads.length > 0) {
+      setLeadsCache(existingLeads);
+    }
+  }, [existingLeads]);
+
+  // Server-side duplicate phone state
+  const [serverMobileDuplicates, setServerMobileDuplicates] = useState<any[]>([]);
+  const [serverAlternateDuplicates, setServerAlternateDuplicates] = useState<any[]>([]);
+
+  // Debounced server-side duplicate check for mobileNumber
+  useEffect(() => {
+    const raw = formData.mobileNumber.trim().replace(/\D/g, "");
+    if (raw.length < 5) {
+      setServerMobileDuplicates([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/admin/leads/check-phone?phone=${encodeURIComponent(raw)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setServerMobileDuplicates(data.duplicates || []);
+        }
+      } catch {
+        // silent fallback
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [formData.mobileNumber]);
+
+  // Debounced server-side duplicate check for alternateNumber
+  useEffect(() => {
+    const raw = formData.alternateNumber.trim().replace(/\D/g, "");
+    if (raw.length < 5) {
+      setServerAlternateDuplicates([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/admin/leads/check-phone?phone=${encodeURIComponent(raw)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setServerAlternateDuplicates(data.duplicates || []);
+        }
+      } catch {
+        // silent fallback
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [formData.alternateNumber]);
+
+  // Combined duplicate matching: In-memory cache + server results
   const mobileDuplicates = useMemo(() => {
-    const rawInput = formData.mobileNumber.trim();
-    if (!rawInput || rawInput.length < 3) return [];
-    return leadsCache.filter((lead) => {
+    const rawInput = formData.mobileNumber.trim().replace(/\D/g, "");
+    if (!rawInput || rawInput.length < 4) return [];
+
+    const localMatches = leadsCache.filter((lead) => {
       const mob = (lead.mobileNumber || lead.phoneNumber || "").replace(/\D/g, "");
       const alt = (lead.alternateNumber || "").replace(/\D/g, "");
       return mob.includes(rawInput) || alt.includes(rawInput);
     });
-  }, [formData.mobileNumber, leadsCache]);
+
+    const seenIds = new Set(localMatches.map((l) => l.uniqueId || l._id));
+    const merged = [...localMatches];
+    for (const dup of serverMobileDuplicates) {
+      const id = dup.uniqueId || dup._id;
+      if (!seenIds.has(id)) {
+        seenIds.add(id);
+        merged.push(dup);
+      }
+    }
+    return merged;
+  }, [formData.mobileNumber, leadsCache, serverMobileDuplicates]);
 
   const alternateDuplicates = useMemo(() => {
-    const rawInput = formData.alternateNumber.trim();
-    if (!rawInput || rawInput.length < 3) return [];
-    return leadsCache.filter((lead) => {
+    const rawInput = formData.alternateNumber.trim().replace(/\D/g, "");
+    if (!rawInput || rawInput.length < 4) return [];
+
+    const localMatches = leadsCache.filter((lead) => {
       const mob = (lead.mobileNumber || lead.phoneNumber || "").replace(/\D/g, "");
       const alt = (lead.alternateNumber || "").replace(/\D/g, "");
       return mob.includes(rawInput) || alt.includes(rawInput);
     });
-  }, [formData.alternateNumber, leadsCache]);
+
+    const seenIds = new Set(localMatches.map((l) => l.uniqueId || l._id));
+    const merged = [...localMatches];
+    for (const dup of serverAlternateDuplicates) {
+      const id = dup.uniqueId || dup._id;
+      if (!seenIds.has(id)) {
+        seenIds.add(id);
+        merged.push(dup);
+      }
+    }
+    return merged;
+  }, [formData.alternateNumber, leadsCache, serverAlternateDuplicates]);
 
   if (!isOpen) return null;
 

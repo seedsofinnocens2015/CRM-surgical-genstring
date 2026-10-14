@@ -10,6 +10,7 @@ import {
   getCurrentMonthMMMYY,
   SUB_DISPOSITIONS_MAP,
 } from "@/lib/leadOptions";
+import { invalidateDashboardCache } from "@/lib/cacheInvalidation";
 
 export const dynamic = "force-dynamic";
 
@@ -278,6 +279,9 @@ export async function POST(req: Request) {
 
     const inserted = await Lead.insertMany(leadsToInsert);
     const nextUniqueId = `SC-${maxNum + 1}`;
+
+    // Invalidate dashboard stats cache immediately upon bulk import
+    invalidateDashboardCache();
 
     return NextResponse.json({
       success: true,

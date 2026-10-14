@@ -62,6 +62,98 @@ interface Lead {
   createdAt?: string;
 }
 
+interface ServerStats {
+  distinctMonths: string[];
+  distinctLocations: string[];
+  metrics: {
+    total: number;
+    closed: number;
+    contactAttempt: number;
+    contacted: number;
+    converted: number;
+    followUp: number;
+    other: number;
+    conversionRate: string;
+  };
+  ftdData: {
+    rows: Array<{
+      date: string;
+      closed: number;
+      contactAttempt: number;
+      contacted: number;
+      converted: number;
+      followUp: number;
+      other: number;
+      grandTotal: number;
+    }>;
+    totals: any;
+  };
+  mtdData: {
+    rows: Array<{
+      month: string;
+      closed: number;
+      contactAttempt: number;
+      contacted: number;
+      converted: number;
+      followUp: number;
+      other: number;
+      grandTotal: number;
+    }>;
+    totals: any;
+  };
+  validSummaryData: {
+    rows: any[];
+    totals: any;
+  };
+  appointmentDateData: {
+    rows: any[];
+    totals: any;
+  };
+  appointmentMonthData: {
+    rows: any[];
+    totals: any;
+  };
+  surgeryDateData: {
+    rows: any[];
+    totals: any;
+  };
+  surgeryMonthData: {
+    rows: any[];
+    totals: any;
+  };
+  callSummaryData: {
+    rows: any[];
+    totals: any;
+  };
+  subDispData: {
+    months: string[];
+    groups: Array<{
+      disposition: string;
+      label: string;
+      rows: Array<{
+        subDisposition: string;
+        monthCounts: Record<string, number>;
+        total: number;
+      }>;
+      totalsByMonth: Record<string, number>;
+      groupTotal: number;
+    }>;
+    grandTotals: Record<string, number>;
+    overallGrandTotal: number;
+  };
+  leadSourceData: {
+    groups: Array<{
+      month: string;
+      rows: Array<{
+        source: string;
+        count: number;
+      }>;
+      total: number;
+    }>;
+    grandTotal: number;
+  };
+}
+
 // Parse currency string to number
 function parseCurrencyNumber(val: string | number | undefined): number {
   if (!val) return 0;
@@ -143,6 +235,8 @@ export default function AdminDashboard() {
   const [collapsedDispositions, setCollapsedDispositions] = useState<Record<string, boolean>>({});
   const [collapsedMonths, setCollapsedMonths] = useState<Record<string, boolean>>({});
 
+  const [serverStats, setServerStats] = useState<ServerStats | null>(null);
+
   const toggleDispositionCollapse = (disp: string) => {
     setCollapsedDispositions((prev) => ({
       ...prev,
@@ -164,9 +258,11 @@ export default function AdminDashboard() {
       if (!isBackground) {
         setRefreshing(true);
       }
-      const [authRes, leadsRes] = await Promise.all([
+      const [authRes, statsRes] = await Promise.all([
         fetch("/api/auth/me"),
-        fetch("/api/admin/leads", { cache: "no-store" }),
+        fetch(`/api/admin/dashboard-stats?month=${encodeURIComponent(selectedMonth)}&location=${encodeURIComponent(selectedLocation)}`, {
+          cache: "no-store",
+        }),
       ]);
 
       if (!authRes.ok) {
@@ -180,9 +276,9 @@ export default function AdminDashboard() {
       }
       setUser(authData.user);
 
-      if (leadsRes.ok) {
-        const leadsData = await leadsRes.json();
-        setLeads(leadsData.leads || []);
+      if (statsRes.ok) {
+        const statsData = await statsRes.json();
+        setServerStats(statsData);
         setLastUpdated(new Date());
       }
     } catch (err) {
@@ -238,10 +334,13 @@ export default function AdminDashboard() {
       window.removeEventListener("storage", handleStorageChange);
       window.removeEventListener("lead_updated", handleCustomLeadUpdate);
     };
-  }, [router]);
+  }, [router, selectedMonth, selectedLocation]);
 
   // Extract distinct months present in the leads chronologically
   const distinctMonths = useMemo(() => {
+    if (serverStats?.distinctMonths && Array.isArray(serverStats.distinctMonths)) {
+      return serverStats.distinctMonths;
+    }
     const set = new Set<string>();
     leads.forEach((l) => {
       let lm = (l.month || "").trim();
@@ -257,17 +356,20 @@ export default function AdminDashboard() {
       if (sm) set.add(sm);
     });
     return Array.from(set).sort((a, b) => parseMonthToSortKey(a) - parseMonthToSortKey(b));
-  }, [leads]);
+  }, [leads, serverStats]);
 
   // Extract distinct locations present in the leads
   const distinctLocations = useMemo(() => {
+    if (serverStats?.distinctLocations && Array.isArray(serverStats.distinctLocations)) {
+      return serverStats.distinctLocations;
+    }
     const set = new Set<string>();
     leads.forEach((l) => {
       const loc = (l.location || l.otherCity || "").trim();
       if (loc) set.add(loc);
     });
     return Array.from(set).sort();
-  }, [leads]);
+  }, [leads, serverStats]);
 
   // Filter leads based on month selection (for daily views)
   const filteredLeads = useMemo(() => {
@@ -286,6 +388,9 @@ export default function AdminDashboard() {
 
   // Calculate Overall KPI Metrics
   const metrics = useMemo(() => {
+    if (serverStats?.metrics && activeReportTab !== "FTD") {
+      return serverStats.metrics;
+    }
     let closed = 0;
     let contactAttempt = 0;
     let contacted = 0;
@@ -320,10 +425,13 @@ export default function AdminDashboard() {
       other,
       conversionRate,
     };
-  }, [leads, filteredLeads, activeReportTab]);
+  }, [leads, filteredLeads, activeReportTab, serverStats]);
 
   // 1. Build Lead Summary FTD (Date-wise Pivot Matrix - Screenshot 1)
   const ftdData = useMemo(() => {
+    if (serverStats?.ftdData) {
+      return serverStats.ftdData;
+    }
     const dateMap: Record<
       string,
       {
@@ -412,10 +520,13 @@ export default function AdminDashboard() {
         grandTotal: grandTotalSum,
       },
     };
-  }, [filteredLeads]);
+  }, [filteredLeads, serverStats]);
 
   // 2. Build Lead Summary MTD (Month-wise Pivot Matrix - Screenshot 2)
   const mtdData = useMemo(() => {
+    if (serverStats?.mtdData) {
+      return serverStats.mtdData;
+    }
     const monthMap: Record<
       string,
       {
@@ -505,10 +616,13 @@ export default function AdminDashboard() {
         grandTotal: grandTotalSum,
       },
     };
-  }, [leads]);
+  }, [leads, serverStats]);
 
   // 3. Build Valid Summary (Month-wise Valid Status Matrix - Screenshot 3)
   const validSummaryData = useMemo(() => {
+    if (serverStats?.validSummaryData) {
+      return serverStats.validSummaryData;
+    }
     const monthMap: Record<
       string,
       {
@@ -585,6 +699,9 @@ export default function AdminDashboard() {
 
   // 4. Build Appointment Date Summary (Count & Collections with Location - Screenshot 4)
   const appointmentDateData = useMemo(() => {
+    if (serverStats?.appointmentDateData) {
+      return serverStats.appointmentDateData;
+    }
     const dateMap: Record<
       string,
       {
@@ -651,6 +768,9 @@ export default function AdminDashboard() {
 
   // 5. Build Appointment Month Summary (Count & Collections - Screenshot 3)
   const appointmentMonthData = useMemo(() => {
+    if (serverStats?.appointmentMonthData) {
+      return serverStats.appointmentMonthData;
+    }
     const monthMap: Record<
       string,
       {
@@ -711,6 +831,9 @@ export default function AdminDashboard() {
 
   // 6. Build Surgery Month Summary (Count & Surgery - Payment Received - Screenshot 5)
   const surgeryMonthData = useMemo(() => {
+    if (serverStats?.surgeryMonthData) {
+      return serverStats.surgeryMonthData;
+    }
     const monthMap: Record<
       string,
       {
@@ -772,6 +895,9 @@ export default function AdminDashboard() {
 
   // 7. Build Surgery Date Summary (Date-wise Count & Surgery - Payment Received with Location - Screenshot 6)
   const surgeryDateData = useMemo(() => {
+    if (serverStats?.surgeryDateData) {
+      return serverStats.surgeryDateData;
+    }
     const dateMap: Record<
       string,
       {
@@ -840,6 +966,9 @@ export default function AdminDashboard() {
 
   // 8. Build Call Summary (Month-wise Enquiry, Valid, Converted, %, Collections - Screenshot 7)
   const callSummaryData = useMemo(() => {
+    if (serverStats?.callSummaryData) {
+      return serverStats.callSummaryData;
+    }
     const monthMap: Record<
       string,
       {
@@ -974,6 +1103,9 @@ export default function AdminDashboard() {
 
   // 9. Build Sub-Disposition Summary (Hierarchical Pivot Matrix - Screenshot 8)
   const subDispData = useMemo(() => {
+    if (serverStats?.subDispData) {
+      return serverStats.subDispData;
+    }
     let sourceLeads = leads;
     if (selectedLocation !== "All") {
       sourceLeads = sourceLeads.filter(
@@ -1089,6 +1221,9 @@ export default function AdminDashboard() {
 
   // 10. Build Lead Source Summary (Month-wise Lead Source Count - Screenshot 9)
   const leadSourceData = useMemo(() => {
+    if (serverStats?.leadSourceData) {
+      return serverStats.leadSourceData;
+    }
     let sourceLeads = leads;
     if (selectedLocation !== "All") {
       sourceLeads = sourceLeads.filter(

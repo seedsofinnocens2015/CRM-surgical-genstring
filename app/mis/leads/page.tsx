@@ -310,30 +310,27 @@ export default function MISLeadsPage() {
     } catch (e) {}
   };
 
-  // Calculate dynamic ordered and pinned columns for table header and rows
+  // Calculate dynamic ordered columns strictly based on user's columnOrder preference
   const orderedColumns = useMemo(() => {
     const all = [...columnOrder];
     TABLE_COLUMNS.forEach((c) => {
       if (!all.includes(c.id)) all.push(c.id);
     });
-    // Pinned columns first, then scrollable columns
-    const pinned = all.filter((id) => pinnedColumns.includes(id) && visibleColumns[id]);
-    const scrollable = all.filter((id) => !pinnedColumns.includes(id) && visibleColumns[id]);
-    return [...pinned, ...scrollable];
-  }, [columnOrder, pinnedColumns, visibleColumns]);
+    return all.filter((id) => visibleColumns[id]);
+  }, [columnOrder, visibleColumns]);
 
   const handleApplyColumns = (
     newVisible: Record<string, boolean>,
     newOrder: string[],
-    newPinned: string[]
+    newPinned?: string[]
   ) => {
     setVisibleColumns(newVisible);
     setColumnOrder(newOrder);
-    setPinnedColumns(newPinned);
+    setPinnedColumns(newPinned || []);
     try {
       localStorage.setItem("crm_leads_visible_columns", JSON.stringify(newVisible));
       localStorage.setItem("crm_leads_column_order_mis", JSON.stringify(newOrder));
-      localStorage.setItem("crm_leads_pinned_columns_mis", JSON.stringify(newPinned));
+      localStorage.removeItem("crm_leads_pinned_columns_mis");
     } catch (e) {}
   };
 
@@ -1126,22 +1123,16 @@ export default function MISLeadsPage() {
                         Lead ID
                       </th>
 
-                      {/* Dynamic Ordered & Pinned Column Headers */}
+                      {/* Dynamic Ordered Column Headers */}
                       {orderedColumns.map((colId) => {
                         const colDef = TABLE_COLUMNS.find((c) => c.id === colId);
-                        const isPinned = pinnedColumns.includes(colId);
                         return (
                           <th
                             key={colId}
                             scope="col"
-                            className={`px-4 py-3.5 font-semibold sticky top-0 bg-white z-20 ${
-                              isPinned ? "border-b-2 border-b-[#cc2727]/30 bg-slate-50/70" : ""
-                            }`}
+                            className="px-4 py-3.5 font-semibold sticky top-0 bg-white z-20"
                           >
-                            <div className="flex items-center gap-1.5">
-                              <span>{colDef?.label || colId}</span>
-                              {isPinned && <span className="text-[10px] text-[#cc2727] font-bold">●</span>}
-                            </div>
+                            <span>{colDef?.label || colId}</span>
                           </th>
                         );
                       })}

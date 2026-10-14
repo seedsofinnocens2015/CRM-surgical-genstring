@@ -119,7 +119,7 @@ export default function AgentDashboard() {
       }
       const [authRes, leadsRes] = await Promise.all([
         fetch("/api/auth/me"),
-        fetch("/api/admin/leads", { cache: "no-store" }),
+        fetch("/api/admin/leads?view=dashboard", { cache: "no-store" }),
       ]);
 
       if (!authRes.ok) {

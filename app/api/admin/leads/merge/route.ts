@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { connectDB } from "@/lib/mongodb";
 import { Lead } from "@/models/Lead";
 import { SUB_DISPOSITIONS_MAP, getFormattedTimestamp } from "@/lib/leadOptions";
+import { invalidateDashboardCache } from "@/lib/cacheInvalidation";
 
 export const dynamic = "force-dynamic";
 
@@ -224,6 +225,9 @@ export async function POST(req: Request) {
     // 5. Delete other merged leads from the database
     const deleteIds = otherLeads.map((ol) => ol._id);
     await Lead.deleteMany({ _id: { $in: deleteIds } });
+
+    // Invalidate dashboard stats cache immediately upon lead merge
+    invalidateDashboardCache();
 
     return NextResponse.json({
       success: true,

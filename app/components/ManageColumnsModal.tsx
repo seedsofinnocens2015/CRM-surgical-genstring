@@ -1,13 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Search,
   X,
-  RotateCcw,
-  SlidersHorizontal,
   GripVertical,
-  Pin,
   Check,
 } from "lucide-react";
 
@@ -22,11 +19,11 @@ interface ManageColumnsModalProps {
   allColumns: ColumnItem[];
   visibleColumns: Record<string, boolean>;
   columnOrder: string[];
-  pinnedColumns: string[];
+  pinnedColumns?: string[];
   onApply: (
     newVisible: Record<string, boolean>,
     newOrder: string[],
-    newPinned: string[]
+    newPinned?: string[]
   ) => void;
   onRestoreDefault: () => void;
 }
@@ -37,14 +34,13 @@ export default function ManageColumnsModal({
   allColumns,
   visibleColumns,
   columnOrder,
-  pinnedColumns,
+  pinnedColumns = [],
   onApply,
   onRestoreDefault,
 }: ManageColumnsModalProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [tempVisible, setTempVisible] = useState<Record<string, boolean>>({});
   const [tempOrder, setTempOrder] = useState<string[]>([]);
-  const [tempPinned, setTempPinned] = useState<string[]>([]);
 
   // Drag and drop state
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -53,8 +49,8 @@ export default function ManageColumnsModal({
   useEffect(() => {
     if (isOpen) {
       setTempVisible({ ...visibleColumns });
-      
-      // Ensure allColumns are present in tempOrder
+
+      // Build initial order: preserve existing columnOrder, add any missing columns at the end
       const currentOrder = [...columnOrder];
       allColumns.forEach((c) => {
         if (!currentOrder.includes(c.id)) {
@@ -62,12 +58,11 @@ export default function ManageColumnsModal({
         }
       });
       setTempOrder(currentOrder);
-      setTempPinned([...pinnedColumns]);
       setSearchQuery("");
       setDraggedId(null);
       setDragOverId(null);
     }
-  }, [isOpen, visibleColumns, columnOrder, pinnedColumns, allColumns]);
+  }, [isOpen, visibleColumns, columnOrder, allColumns]);
 
   const selectedCount = useMemo(() => {
     return Object.values(tempVisible).filter(Boolean).length;
@@ -79,7 +74,7 @@ export default function ManageColumnsModal({
     return allColumns.filter((c) => c.label.toLowerCase().includes(q));
   }, [allColumns, searchQuery]);
 
-  // Selected columns ordered by tempOrder
+  // Selected columns in single ordered list
   const selectedOrderedColumns = useMemo(() => {
     const list: ColumnItem[] = [];
     tempOrder.forEach((id) => {
@@ -91,45 +86,15 @@ export default function ManageColumnsModal({
     return list;
   }, [tempOrder, tempVisible, allColumns]);
 
-  // Split into pinned and scrollable
-  const pinnedList = useMemo(() => {
-    return selectedOrderedColumns.filter((c) => tempPinned.includes(c.id));
-  }, [selectedOrderedColumns, tempPinned]);
-
-  const scrollableList = useMemo(() => {
-    return selectedOrderedColumns.filter((c) => !tempPinned.includes(c.id));
-  }, [selectedOrderedColumns, tempPinned]);
-
   const handleToggleColumn = (id: string) => {
     setTempVisible((prev) => {
       const nextVal = !prev[id];
-      const updated = { ...prev, [id]: nextVal };
-      if (!nextVal) {
-        // If unchecked, unpin it
-        setTempPinned((curr) => curr.filter((p) => p !== id));
-      }
-      return updated;
+      return { ...prev, [id]: nextVal };
     });
   };
 
   const handleRemoveFromSelected = (id: string) => {
     setTempVisible((prev) => ({ ...prev, [id]: false }));
-    setTempPinned((curr) => curr.filter((p) => p !== id));
-  };
-
-  const handleTogglePin = (id: string) => {
-    setTempPinned((prev) => {
-      if (prev.includes(id)) {
-        return prev.filter((p) => p !== id);
-      } else {
-        if (prev.length >= 4) {
-          // Maximum 4 pinned columns as in screenshot (Pinned Columns 2/4)
-          alert("You can pin a maximum of 4 columns.");
-          return prev;
-        }
-        return [...prev, id];
-      }
-    });
   };
 
   // Drag and Drop reordering handlers
@@ -176,7 +141,7 @@ export default function ManageColumnsModal({
   };
 
   const handleSave = () => {
-    onApply(tempVisible, tempOrder, tempPinned);
+    onApply(tempVisible, tempOrder, []);
     onClose();
   };
 
@@ -190,13 +155,18 @@ export default function ManageColumnsModal({
       >
         {/* Header */}
         <div className="px-6 py-4.5 border-b border-slate-100 flex items-center justify-between">
-          <h2 className="text-base font-bold text-slate-900 tracking-tight">
-            Manage Columns
-          </h2>
+          <div>
+            <h2 className="text-base font-bold text-slate-900 tracking-tight">
+              Manage Columns
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Select columns and drag to reorder which appears first
+            </p>
+          </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -208,7 +178,7 @@ export default function ManageColumnsModal({
           <div className="p-6 flex flex-col min-h-0 overflow-hidden">
             <div className="flex items-center justify-between mb-3.5">
               <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                <span>Select Lead Columns</span>
+                <span>Select Columns</span>
                 <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600">
                   {selectedCount}/{allColumns.length}
                 </span>
@@ -220,7 +190,7 @@ export default function ManageColumnsModal({
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Search here"
+                placeholder="Search columns..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-3.5 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#cc2727] focus:border-transparent transition-all"
@@ -255,137 +225,65 @@ export default function ManageColumnsModal({
             </div>
           </div>
 
-          {/* Right Column: Reorder Selected Columns */}
+          {/* Right Column: Reorder Columns (Single Unified Drag & Drop List) */}
           <div className="p-6 flex flex-col min-h-0 overflow-hidden bg-slate-50/50">
-            <div className="mb-3.5">
-              <h3 className="text-sm font-semibold text-slate-900">
-                Reorder Selected Columns
+            <div className="flex items-center justify-between mb-3.5">
+              <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                <span>Selected Columns Order</span>
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-[#cc2727]/10 text-[#cc2727]">
+                  {selectedOrderedColumns.length} Selected
+                </span>
               </h3>
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-5 pr-1.5 min-h-[300px]">
-              {/* 1. Pinned Columns Section */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold text-slate-600">
-                    Pinned Columns
-                  </span>
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-slate-200/70 text-slate-700">
-                    {pinnedList.length}/4
-                  </span>
-                </div>
+            <p className="text-[11px] text-slate-500 mb-3">
+              Drag items up or down to arrange column order in the table:
+            </p>
 
-                <div className="space-y-2">
-                  {pinnedList.length === 0 ? (
-                    <div className="py-2.5 px-3 rounded-xl border border-dashed border-slate-200 text-center text-xs text-slate-400 bg-white">
-                      No pinned columns (Click pin icon to pin up to 4)
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1.5 min-h-[300px]">
+              {selectedOrderedColumns.length === 0 ? (
+                <div className="py-8 px-4 rounded-xl border border-dashed border-slate-200 text-center text-xs text-slate-400 bg-white">
+                  No columns selected. Check columns on the left to show them.
+                </div>
+              ) : (
+                selectedOrderedColumns.map((col, index) => (
+                  <div
+                    key={col.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, col.id)}
+                    onDragOver={(e) => handleDragOver(e, col.id)}
+                    onDrop={(e) => handleDrop(e, col.id)}
+                    onDragEnd={handleDragEnd}
+                    className={`flex items-center justify-between px-3.5 py-2.5 bg-white border rounded-xl shadow-xs transition-all cursor-move select-none ${
+                      draggedId === col.id
+                        ? "opacity-40 border-dashed border-[#cc2727]"
+                        : dragOverId === col.id
+                        ? "border-[#cc2727] ring-1 ring-[#cc2727]"
+                        : "border-slate-200 hover:border-slate-300 hover:shadow-sm"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <GripVertical className="w-4 h-4 text-slate-400 shrink-0 cursor-grab active:cursor-grabbing" />
+                      <span className="w-5 text-[11px] font-bold text-slate-400 font-mono shrink-0">
+                        {index + 1}.
+                      </span>
+                      <span className="text-xs font-semibold text-slate-800 truncate">
+                        {col.label}
+                      </span>
                     </div>
-                  ) : (
-                    pinnedList.map((col) => (
-                      <div
-                        key={col.id}
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, col.id)}
-                        onDragOver={(e) => handleDragOver(e, col.id)}
-                        onDrop={(e) => handleDrop(e, col.id)}
-                        onDragEnd={handleDragEnd}
-                        className={`flex items-center justify-between px-3.5 py-2.5 bg-white border rounded-xl shadow-xs transition-all cursor-move select-none ${
-                          draggedId === col.id
-                            ? "opacity-40 border-dashed border-[#cc2727]"
-                            : dragOverId === col.id
-                            ? "border-[#cc2727] ring-1 ring-[#cc2727]"
-                            : "border-slate-200 hover:border-slate-300"
-                        }`}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveFromSelected(col.id)}
+                        className="p-1 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                        title="Remove column"
                       >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <GripVertical className="w-4 h-4 text-slate-400 shrink-0" />
-                          <span className="text-xs font-semibold text-slate-800 truncate">
-                            {col.label}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => handleTogglePin(col.id)}
-                            className="p-1 text-[#cc2727] hover:text-[#b02121] rounded transition-colors"
-                            title="Unpin column"
-                          >
-                            <Pin className="w-3.5 h-3.5 fill-[#cc2727]" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveFromSelected(col.id)}
-                            className="p-1 text-slate-400 hover:text-slate-700 rounded transition-colors"
-                            title="Remove column"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* 2. Scrollable Columns Section */}
-              <div>
-                <div className="mb-2">
-                  <span className="text-xs font-semibold text-slate-600">
-                    Scrollable Columns
-                  </span>
-                </div>
-
-                <div className="space-y-2">
-                  {scrollableList.length === 0 ? (
-                    <div className="py-2.5 px-3 rounded-xl border border-dashed border-slate-200 text-center text-xs text-slate-400 bg-white">
-                      No scrollable columns selected
+                        <X className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                  ) : (
-                    scrollableList.map((col) => (
-                      <div
-                        key={col.id}
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, col.id)}
-                        onDragOver={(e) => handleDragOver(e, col.id)}
-                        onDrop={(e) => handleDrop(e, col.id)}
-                        onDragEnd={handleDragEnd}
-                        className={`flex items-center justify-between px-3.5 py-2.5 bg-white border rounded-xl shadow-xs transition-all cursor-move select-none ${
-                          draggedId === col.id
-                            ? "opacity-40 border-dashed border-[#cc2727]"
-                            : dragOverId === col.id
-                            ? "border-[#cc2727] ring-1 ring-[#cc2727]"
-                            : "border-slate-200 hover:border-slate-300"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <GripVertical className="w-4 h-4 text-slate-400 shrink-0" />
-                          <span className="text-xs font-semibold text-slate-800 truncate">
-                            {col.label}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => handleTogglePin(col.id)}
-                            className="p-1 text-slate-400 hover:text-[#cc2727] rounded transition-colors"
-                            title="Pin column"
-                          >
-                            <Pin className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveFromSelected(col.id)}
-                            className="p-1 text-slate-400 hover:text-slate-700 rounded transition-colors"
-                            title="Remove column"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

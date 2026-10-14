@@ -63,6 +63,98 @@ interface Lead {
   createdAt?: string;
 }
 
+interface ServerStats {
+  distinctMonths: string[];
+  distinctLocations: string[];
+  metrics: {
+    total: number;
+    closed: number;
+    contactAttempt: number;
+    contacted: number;
+    converted: number;
+    followUp: number;
+    other: number;
+    conversionRate: string;
+  };
+  ftdData: {
+    rows: Array<{
+      date: string;
+      closed: number;
+      contactAttempt: number;
+      contacted: number;
+      converted: number;
+      followUp: number;
+      other: number;
+      grandTotal: number;
+    }>;
+    totals: any;
+  };
+  mtdData: {
+    rows: Array<{
+      month: string;
+      closed: number;
+      contactAttempt: number;
+      contacted: number;
+      converted: number;
+      followUp: number;
+      other: number;
+      grandTotal: number;
+    }>;
+    totals: any;
+  };
+  validSummaryData: {
+    rows: any[];
+    totals: any;
+  };
+  appointmentDateData: {
+    rows: any[];
+    totals: any;
+  };
+  appointmentMonthData: {
+    rows: any[];
+    totals: any;
+  };
+  surgeryDateData: {
+    rows: any[];
+    totals: any;
+  };
+  surgeryMonthData: {
+    rows: any[];
+    totals: any;
+  };
+  callSummaryData: {
+    rows: any[];
+    totals: any;
+  };
+  subDispData: {
+    months: string[];
+    groups: Array<{
+      disposition: string;
+      label: string;
+      rows: Array<{
+        subDisposition: string;
+        monthCounts: Record<string, number>;
+        total: number;
+      }>;
+      totalsByMonth: Record<string, number>;
+      groupTotal: number;
+    }>;
+    grandTotals: Record<string, number>;
+    overallGrandTotal: number;
+  };
+  leadSourceData: {
+    groups: Array<{
+      month: string;
+      rows: Array<{
+        source: string;
+        count: number;
+      }>;
+      total: number;
+    }>;
+    grandTotal: number;
+  };
+}
+
 // Parse currency string to number
 function parseCurrencyNumber(val: string | number | undefined): number {
   if (!val) return 0;
@@ -144,6 +236,8 @@ export default function MarketingDashboard() {
   const [collapsedDispositions, setCollapsedDispositions] = useState<Record<string, boolean>>({});
   const [collapsedMonths, setCollapsedMonths] = useState<Record<string, boolean>>({});
 
+  const [serverStats, setServerStats] = useState<ServerStats | null>(null);
+
   const toggleDispositionCollapse = (disp: string) => {
     setCollapsedDispositions((prev) => ({
       ...prev,
@@ -165,9 +259,11 @@ export default function MarketingDashboard() {
       if (!isBackground) {
         setRefreshing(true);
       }
-      const [authRes, leadsRes] = await Promise.all([
+      const [authRes, statsRes] = await Promise.all([
         fetch("/api/auth/me"),
-        fetch("/api/admin/leads", { cache: "no-store" }),
+        fetch(`/api/admin/dashboard-stats?month=${encodeURIComponent(selectedMonth)}&location=${encodeURIComponent(selectedLocation)}`, {
+          cache: "no-store",
+        }),
       ]);
 
       if (!authRes.ok) {
@@ -181,9 +277,9 @@ export default function MarketingDashboard() {
       }
       setUser(authData.user);
 
-      if (leadsRes.ok) {
-        const leadsData = await leadsRes.json();
-        setLeads(leadsData.leads || []);
+      if (statsRes.ok) {
+        const statsData = await statsRes.json();
+        setServerStats(statsData);
         setLastUpdated(new Date());
       }
     } catch (err) {
@@ -239,10 +335,13 @@ export default function MarketingDashboard() {
       window.removeEventListener("storage", handleStorageChange);
       window.removeEventListener("lead_updated", handleCustomLeadUpdate);
     };
-  }, [router]);
+  }, [router, selectedMonth, selectedLocation]);
 
   // Extract distinct months present in the leads chronologically
   const distinctMonths = useMemo(() => {
+    if (serverStats?.distinctMonths && Array.isArray(serverStats.distinctMonths)) {
+      return serverStats.distinctMonths;
+    }
     const set = new Set<string>();
     leads.forEach((l) => {
       let lm = (l.month || "").trim();
@@ -258,17 +357,20 @@ export default function MarketingDashboard() {
       if (sm) set.add(sm);
     });
     return Array.from(set).sort((a, b) => parseMonthToSortKey(a) - parseMonthToSortKey(b));
-  }, [leads]);
+  }, [leads, serverStats]);
 
   // Extract distinct locations present in the leads
   const distinctLocations = useMemo(() => {
+    if (serverStats?.distinctLocations && Array.isArray(serverStats.distinctLocations)) {
+      return serverStats.distinctLocations;
+    }
     const set = new Set<string>();
     leads.forEach((l) => {
       const loc = (l.location || l.otherCity || "").trim();
       if (loc) set.add(loc);
     });
     return Array.from(set).sort();
-  }, [leads]);
+  }, [leads, serverStats]);
 
   // Filter leads based on month selection (for daily views)
   const filteredLeads = useMemo(() => {
@@ -287,6 +389,9 @@ export default function MarketingDashboard() {
 
   // Calculate Overall KPI Metrics
   const metrics = useMemo(() => {
+    if (serverStats?.metrics && activeReportTab !== "FTD") {
+      return serverStats.metrics;
+    }
     let closed = 0;
     let contactAttempt = 0;
     let contacted = 0;
@@ -321,10 +426,13 @@ export default function MarketingDashboard() {
       other,
       conversionRate,
     };
-  }, [leads, filteredLeads, activeReportTab]);
+  }, [leads, filteredLeads, activeReportTab, serverStats]);
 
   // 1. Build Lead Summary FTD (Date-wise Pivot Matrix - Screenshot 1)
   const ftdData = useMemo(() => {
+    if (serverStats?.ftdData) {
+      return serverStats.ftdData;
+    }
     const dateMap: Record<
       string,
       {

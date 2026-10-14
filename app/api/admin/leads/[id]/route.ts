@@ -5,6 +5,7 @@ import mongoose from "mongoose";
 import { connectDB } from "@/lib/mongodb";
 import { Lead } from "@/models/Lead";
 import { getTodayDDMMMYY } from "@/lib/leadOptions";
+import { invalidateDashboardCache } from "@/lib/cacheInvalidation";
 
 const JWT_SECRET = process.env.JWT_SECRET || "default_jwt_secret_key";
 
@@ -287,6 +288,9 @@ export async function PUT(
       { new: true, runValidators: true }
     );
 
+    // Invalidate dashboard stats cache immediately upon lead update
+    invalidateDashboardCache();
+
     return NextResponse.json({
       message: "Lead updated successfully",
       lead: updatedLead,
@@ -331,6 +335,9 @@ export async function DELETE(
     if (!deleted) {
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
+
+    // Invalidate dashboard stats cache immediately upon lead deletion
+    invalidateDashboardCache();
 
     return NextResponse.json({ message: "Lead deleted successfully" });
   } catch (error: any) {

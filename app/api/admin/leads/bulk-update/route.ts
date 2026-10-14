@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { connectDB } from "@/lib/mongodb";
 import { Lead } from "@/models/Lead";
 import { SUB_DISPOSITIONS_MAP, getFormattedTimestamp } from "@/lib/leadOptions";
+import { invalidateDashboardCache } from "@/lib/cacheInvalidation";
 
 export const dynamic = "force-dynamic";
 
@@ -128,6 +129,9 @@ export async function POST(req: Request) {
       $set: updateObj,
       $push: { auditLogs: auditEntry },
     });
+
+    // Invalidate dashboard stats cache immediately upon bulk update
+    invalidateDashboardCache();
 
     return NextResponse.json({
       success: true,

@@ -76,6 +76,7 @@ export default function TeamLeaderDashboard() {
   const [user, setUser] = useState<any>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  const [serverLeadMetrics, setServerLeadMetrics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -84,9 +85,9 @@ export default function TeamLeaderDashboard() {
       if (!isBackground) {
         setRefreshing(true);
       }
-      const [authRes, leadsRes, membersRes] = await Promise.all([
+      const [authRes, statsRes, membersRes] = await Promise.all([
         fetch("/api/auth/me"),
-        fetch("/api/admin/leads", { cache: "no-store" }),
+        fetch("/api/admin/dashboard-stats", { cache: "no-store" }),
         fetch("/api/admin/members", { cache: "no-store" }),
       ]);
 
@@ -111,9 +112,11 @@ export default function TeamLeaderDashboard() {
       }
       setUser(authData.user);
 
-      if (leadsRes.ok) {
-        const leadsData = await leadsRes.json();
-        setLeads(leadsData.leads || []);
+      if (statsRes.ok) {
+        const statsData = await statsRes.json();
+        if (statsData.metrics) {
+          setServerLeadMetrics(statsData.metrics);
+        }
       }
 
       if (membersRes.ok) {
@@ -184,6 +187,9 @@ export default function TeamLeaderDashboard() {
 
   // Calculate Overall KPI Lead Metrics
   const leadMetrics = useMemo(() => {
+    if (serverLeadMetrics) {
+      return serverLeadMetrics;
+    }
     let closed = 0;
     let contactAttempt = 0;
     let contacted = 0;

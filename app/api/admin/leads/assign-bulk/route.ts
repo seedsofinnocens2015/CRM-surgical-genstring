@@ -6,6 +6,7 @@ import { connectDB } from "@/lib/mongodb";
 import { Lead } from "@/models/Lead";
 import { User } from "@/models/User";
 import { getTodayDDMMMYY } from "@/lib/leadOptions";
+import { invalidateDashboardCache } from "@/lib/cacheInvalidation";
 
 export const dynamic = "force-dynamic";
 
@@ -153,6 +154,9 @@ export async function POST(req: Request) {
     });
 
     const result = await Lead.bulkWrite(bulkOps);
+
+    // Invalidate dashboard stats cache immediately upon bulk assignment
+    invalidateDashboardCache();
 
     return NextResponse.json({
       message: `Successfully assigned ${result.modifiedCount} lead(s) to agent ${assignedAgentName}!`,
