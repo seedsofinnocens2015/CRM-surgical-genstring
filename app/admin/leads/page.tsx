@@ -181,50 +181,58 @@ export default function AdminLeadsPage() {
   const [toastMessage, setToastMessage] = useState("");
 
   // Advanced Filters State with localStorage persistence
-  const [filters, setFilters] = useState<LeadFilters>(initialFilters);
+  const [filters, setFilters] = useState<LeadFilters>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const filterParam = urlParams.get("filter");
+
+        if (filterParam) {
+          if (filterParam === "all") {
+            return initialFilters;
+          }
+          let updated = { ...initialFilters };
+          if (filterParam === "converted") {
+            updated.dispositions = "Converted";
+          } else if (filterParam === "contacted") {
+            updated.dispositions = "Contacted";
+          } else if (filterParam === "contact_attempt") {
+            updated.dispositions = "Contact Attempt";
+          } else if (filterParam === "closed") {
+            updated.dispositions = "Closed";
+          } else if (filterParam === "follow_up") {
+            updated.quickMetricFilter = "follow_up";
+          } else if (filterParam === "unassigned") {
+            updated.quickMetricFilter = "unassigned";
+          }
+          return updated;
+        }
+
+        const savedFilters = localStorage.getItem("crm_leads_filters_admin");
+        if (savedFilters) {
+          return { ...initialFilters, ...JSON.parse(savedFilters) };
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    return initialFilters;
+  });
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
 
-  // Load saved filters on mount or apply filter from URL query param (e.g. from KPI metric cards)
+  // Sync url param if present on mount and store
   useEffect(() => {
     try {
       const urlParams = new URLSearchParams(window.location.search);
       const filterParam = urlParams.get("filter");
-
       if (filterParam) {
         if (filterParam === "all") {
-          setFilters(initialFilters);
           localStorage.removeItem("crm_leads_filters_admin");
-          return;
+        } else {
+          localStorage.setItem("crm_leads_filters_admin", JSON.stringify(filters));
         }
-
-        let updated = { ...initialFilters };
-        if (filterParam === "converted") {
-          updated.dispositions = "Converted";
-        } else if (filterParam === "contacted") {
-          updated.dispositions = "Contacted";
-        } else if (filterParam === "contact_attempt") {
-          updated.dispositions = "Contact Attempt";
-        } else if (filterParam === "closed") {
-          updated.dispositions = "Closed";
-        } else if (filterParam === "follow_up") {
-          updated.quickMetricFilter = "follow_up";
-        } else if (filterParam === "unassigned") {
-          updated.quickMetricFilter = "unassigned";
-        }
-
-        setFilters(updated);
-        localStorage.setItem("crm_leads_filters_admin", JSON.stringify(updated));
-        return;
       }
-
-      const savedFilters = localStorage.getItem("crm_leads_filters_admin");
-      if (savedFilters) {
-        const parsed = JSON.parse(savedFilters);
-        setFilters((prev) => ({ ...prev, ...parsed }));
-      }
-    } catch (e) {
-      // ignore
-    }
+    } catch (e) {}
   }, []);
 
   const updateFilter = (key: keyof LeadFilters, value: string) => {
@@ -1221,7 +1229,7 @@ export default function AdminLeadsPage() {
     return filteredLeads.slice(startIndex, startIndex + pageSize);
   }, [filteredLeads, currentPage, pageSize]);
 
-  // Restore scroll position instantly after data is loaded (clean, professional, no animated jumping)
+  // Restore scroll position and page instantly after data is loaded
   useEffect(() => {
     if (loading || filteredLeads.length === 0) return;
 
@@ -1231,20 +1239,33 @@ export default function AdminLeadsPage() {
 
       if (savedLeadId) {
         setHighlightedLeadId(savedLeadId);
-      }
 
-      // Restore exact scroll position instantly
-      requestAnimationFrame(() => {
-        if (tableScrollRef.current) {
-          if (savedScrollTop) {
-            tableScrollRef.current.scrollTop = Number(savedScrollTop);
-          } else if (savedLeadId) {
-            const rowElem = document.getElementById(`lead-row-${savedLeadId}`);
-            if (rowElem) {
-              rowElem.scrollIntoView({ block: "nearest" });
-            }
+        // Find which page the lead is located on
+        const leadIndex = filteredLeads.findIndex(
+          (l) => (l.uniqueId || l._id) === savedLeadId || l._id === savedLeadId || l.uniqueId === savedLeadId
+        );
+        if (leadIndex !== -1) {
+          const targetPage = Math.floor(leadIndex / pageSize) + 1;
+          if (currentPage !== targetPage) {
+            setCurrentPage(targetPage);
           }
         }
+      }
+
+      // Restore exact scroll position or scroll highlighted lead into view
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          if (tableScrollRef.current) {
+            if (savedScrollTop) {
+              tableScrollRef.current.scrollTop = Number(savedScrollTop);
+            } else if (savedLeadId) {
+              const rowElem = document.getElementById(`lead-row-${savedLeadId}`);
+              if (rowElem) {
+                rowElem.scrollIntoView({ block: "nearest" });
+              }
+            }
+          }
+        }, 50);
       });
     } catch (e) {}
   }, [loading, filteredLeads.length]);
@@ -1787,13 +1808,19 @@ export default function AdminLeadsPage() {
                           isSelected
                             ? "bg-[#cc2727]/10 hover:bg-[#cc2727]/15 font-medium ring-1 ring-inset ring-[#cc2727]/30"
                             : isHighlighted
-                            ? "bg-amber-100/70 hover:bg-amber-100 font-medium ring-1 ring-inset ring-amber-400"
+                            ? "bg-amber-100 hover:bg-amber-200/90 font-medium ring-2 ring-inset ring-amber-400"
                             : "hover:bg-slate-100/60"
                         }`}
                       >
                         {/* 0. Row Selection Checkbox (Sticky Left) */}
                         <td
-                          className="w-10 px-3 py-3.5 sticky left-0 bg-white group-hover:bg-slate-100/90 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.06)] text-center"
+                          className={`w-10 px-3 py-3.5 sticky left-0 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.06)] text-center transition-colors ${
+                            isSelected
+                              ? "bg-rose-50"
+                              : isHighlighted
+                              ? "bg-amber-100 group-hover:bg-amber-200/90"
+                              : "bg-white group-hover:bg-slate-100/90"
+                          }`}
                           onClick={(e) => e.stopPropagation()}
                         >
                           <input
@@ -1805,7 +1832,15 @@ export default function AdminLeadsPage() {
                         </td>
 
                         {/* 1. Unique ID (Sticky Left at 40px) */}
-                        <td className="px-4 py-3.5 sticky left-10 bg-white group-hover:bg-slate-100/90 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.06)]">
+                        <td
+                          className={`px-4 py-3.5 sticky left-10 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.06)] transition-colors ${
+                            isSelected
+                              ? "bg-rose-50"
+                              : isHighlighted
+                              ? "bg-amber-100 group-hover:bg-amber-200/90"
+                              : "bg-white group-hover:bg-slate-100/90"
+                          }`}
+                        >
                           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#cc2727]/10 text-[#cc2727] border border-[#cc2727]/20 text-xs font-mono font-bold">
                             <Hash className="w-3 h-3 text-[#cc2727]" />
                             {lead.uniqueId || "N/A"}
@@ -1818,7 +1853,15 @@ export default function AdminLeadsPage() {
                         ))}
 
                         {/* Action Column (Sticky Right) */}
-                        <td className="px-4 py-3.5 text-right sticky right-0 bg-white group-hover:bg-slate-100/90 z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.5)]">
+                        <td
+                          className={`px-4 py-3.5 text-right sticky right-0 z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.5)] transition-colors ${
+                            isSelected
+                              ? "bg-rose-50"
+                              : isHighlighted
+                              ? "bg-amber-100 group-hover:bg-amber-200/90"
+                              : "bg-white group-hover:bg-slate-100/90"
+                          }`}
+                        >
                           <div className="inline-flex items-center gap-1.5">
                             <button
                               type="button"
