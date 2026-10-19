@@ -999,13 +999,7 @@ export default function MISDashboard() {
       );
     }
 
-    sourceLeads.forEach((lead) => {
-      let m = (lead.month || "").trim();
-      if (!m && lead.date) {
-        m = getMonthFromDate(lead.date);
-      }
-      const monthKey = m || "Unknown";
-
+    const getOrCreate = (monthKey: string) => {
       if (!monthMap[monthKey]) {
         monthMap[monthKey] = {
           month: monthKey,
@@ -1019,39 +1013,64 @@ export default function MISDashboard() {
           totalCollections: 0,
         };
       }
+      return monthMap[monthKey];
+    };
 
-      // 1. Enquiry count
-      monthMap[monthKey].enquiry += 1;
+    sourceLeads.forEach((lead) => {
+      // 1. Enquiry, Valid, and Converted by Lead Date/Month
+      let m = (lead.month || "").trim();
+      if (!m && lead.date) {
+        m = getMonthFromDate(lead.date);
+      }
+      const leadMonthKey = m || "Unknown";
+      const leadMonthObj = getOrCreate(leadMonthKey);
+
+      // Enquiry count
+      leadMonthObj.enquiry += 1;
       totalEnquiry += 1;
 
-      // 2. Valid status
+      // Valid status
       const validCategory = categorizeValidStatus(lead.validStatus);
       if (validCategory === "Valid") {
-        monthMap[monthKey].valid += 1;
+        leadMonthObj.valid += 1;
         totalValid += 1;
       }
 
-      // 3. Converted disposition
+      // Converted disposition
       const dispCategory = categorizeDisposition(lead.dispositions);
       if (dispCategory === "Converted") {
-        monthMap[monthKey].converted += 1;
+        leadMonthObj.converted += 1;
         totalConverted += 1;
       }
 
-      // 4. Consultation charges
+      // 2. Consultation charges mapped to Appointment Month (matching Appointment Month Summary)
       const consultFee = parseCurrencyNumber(lead.consultationCharges);
-      if (consultFee > 0) {
-        monthMap[monthKey].consultationCharges += consultFee;
+      const hasAppt = !!lead.appointmentDate || !!lead.appointmentMonth || consultFee > 0;
+      if (hasAppt && consultFee > 0) {
+        let apptM = (lead.appointmentMonth || "").trim();
+        if (!apptM && lead.appointmentDate) {
+          apptM = getMonthFromDate(lead.appointmentDate);
+        }
+        const apptMonthKey = apptM || "Unknown";
+        const apptMonthObj = getOrCreate(apptMonthKey);
+        apptMonthObj.consultationCharges += consultFee;
         totalConsultationCharges += consultFee;
       }
 
-      // 5. Surgery count & collections (strictly when surgeryDate is present)
-      const surgPay = parseCurrencyNumber(lead.surgeryPaymentReceived);
-      const hasSurgery = !!(lead.surgeryDate && lead.surgeryDate.trim());
-      if (hasSurgery) {
-        monthMap[monthKey].surgeryCount += 1;
+      // 3. Surgery count & collections mapped to Surgery Month (matching Surgery Month Summary MTD)
+      const surgDate = (lead.surgeryDate || "").trim();
+      if (surgDate) {
+        let surgM = (lead.surgeryMonth || "").trim();
+        if (!surgM) {
+          surgM = getMonthFromDate(surgDate);
+        }
+        const surgMonthKey = surgM || "Unknown";
+        const surgMonthObj = getOrCreate(surgMonthKey);
+
+        const surgPay = parseCurrencyNumber(lead.surgeryPaymentReceived);
+        surgMonthObj.surgeryCount += 1;
         totalSurgeryCount += 1;
-        monthMap[monthKey].surgeryCollections += surgPay;
+        surgMonthObj.surgeryCollections += surgPay;
         totalSurgeryCollections += surgPay;
       }
     });
